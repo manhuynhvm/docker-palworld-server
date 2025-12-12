@@ -471,7 +471,7 @@ jobs:
 
           # Get help (works on all platforms)
           docker run --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64 python3 /scripts/healthcheck.py --help
-          \`\`\`
+          \`\`
 
           ## 🎉 Enhanced Features
 
@@ -496,8 +496,30 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for commit history
       - name: 🕐 Set current date
         run: echo "BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+      - name: 📋 Generate release notes with commit history
+        run: |
+          # Get the latest tag to compare against
+          LATEST_TAG=$(git tag --sort=-creatordate | head -n 1)
+
+          if [ -n "$LATEST_TAG" ]; then
+            echo "## 📋 What's Changed" >> release_notes.md
+            echo "" >> release_notes.md
+            git log --pretty=format:"- %h %s (%an)" $LATEST_TAG..HEAD >> release_notes.md
+            echo "" >> release_notes.md
+            echo "" >> release_notes.md
+          else
+            echo "## 📋 What's Changed" >> release_notes.md
+            echo "" >> release_notes.md
+            git log --pretty=format:"- %h %s (%an)" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "" >> release_notes.md
+          fi
       - name: 🏷️ Create comprehensive GitHub Release for Palworld Server
         uses: softprops/action-gh-release@v2
         with:
@@ -511,6 +533,9 @@ jobs:
             **Build/Release Version**: ${{ needs.prepare.outputs.build_version_base }}  
             **Platform**: ARM64 optimized  
             **Build Workflow**: #${{ github.run_number }}
+
+
+            ${{ steps.generate_notes.outputs.release_notes }}
 
           files: /tmp/digests/*/digest.txt
           draft: false
