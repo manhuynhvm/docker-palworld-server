@@ -6,3 +6,7 @@
 
 *.bak
 *.backup
+
+venv
+*.pyc
+tests
