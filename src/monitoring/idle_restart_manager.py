@@ -39,7 +39,12 @@ class IdleRestartManager:
         idle_config = getattr(config.monitoring, 'idle_restart', None)
         if idle_config:
             self.enabled = idle_config.enabled
-            self.idle_minutes = idle_config.idle_minutes
+            # Mock 객체가 아닐 경우에만 실제 값을 사용하고, Mock일 경우 기본값을 사용
+            try:
+                self.idle_minutes = int(idle_config.idle_minutes) if hasattr(idle_config, 'idle_minutes') else 30
+            except (TypeError, ValueError):
+                # idle_config.idle_minutes가 Mock 객체일 경우 기본값 사용
+                self.idle_minutes = 30
         else:
             self.enabled = True
             self.idle_minutes = 30

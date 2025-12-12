@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from pathlib import Path
+import gc
 
 from ..config_loader import PalworldConfig
 from ..logging_setup import get_logger, log_server_event
@@ -55,6 +56,10 @@ class MetricsCollector:
         self.last_network_stats = psutil.net_io_counters()
         self._collection_task: Optional[asyncio.Task] = None
         self._running = False
+        
+        # Track last collection time to manage psutil resources
+        self._last_collection_time = 0
+        self._collection_interval = config.monitoring.metrics_interval
     
     async def start_collection(self):
         """Start metrics collection"""
@@ -89,6 +94,12 @@ class MetricsCollector:
                 system_metrics = await self._collect_system_metrics()
                 await self._process_system_metrics(system_metrics)
                 
+                # Perform garbage collection periodically to prevent memory accumulation
+                current_time = time.time()
+                if current_time - self._last_collection_time > 300:  # Every 5 minutes
+                    gc.collect()
+                    self._last_collection_time = current_time
+                
                 await asyncio.sleep(interval)
                 
             except asyncio.CancelledError:
@@ -99,6 +110,7 @@ class MetricsCollector:
     
     async def _collect_system_metrics(self) -> SystemMetrics:
         """Collect system metrics"""
+        # Use psutil functions without storing references longer than necessary
         cpu_percent = psutil.cpu_percent(interval=1)
         
         memory = psutil.virtual_memory()
@@ -117,6 +129,7 @@ class MetricsCollector:
         except AttributeError:
             pass
         
+        # Create and return metrics object immediately to avoid holding references
         return SystemMetrics(
             cpu_percent=cpu_percent,
             memory_usage_gb=memory_usage_gb,
@@ -234,6 +247,7 @@ class MetricsCollector:
     def get_current_metrics_summary(self) -> Dict[str, Any]:
         """Get current metrics summary"""
         try:
+            # Collect metrics without storing unnecessary references
             cpu_percent = psutil.cpu_percent()
             memory = psutil.virtual_memory()
             disk = psutil.disk_usage(str(self.config.paths.server_dir))

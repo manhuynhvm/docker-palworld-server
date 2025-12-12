@@ -60,14 +60,66 @@ class ServerMonitor:
             ServerEventType.PERFORMANCE_ISSUE: []
         }
         
+        # Track which callbacks were added by the system vs externally
+        self._system_callbacks: Dict[ServerEventType, set] = {
+            ServerEventType.STATUS_CHANGED: set(),
+            ServerEventType.HEALTH_WARNING: set(),
+            ServerEventType.PERFORMANCE_ISSUE: set()
+        }
+        
         self._check_interval = 30
         self._health_check_interval = 300
         self._last_health_check = 0
     
-    def add_event_callback(self, event_type: ServerEventType, callback: Callable[[ServerEvent], Awaitable[None]]) -> None:
+    def add_event_callback(self, event_type: ServerEventType, callback: Callable[[ServerEvent], Awaitable[None]], is_system_callback: bool = False) -> None:
         """Add callback for server events"""
-        self._event_callbacks[event_type].append(callback)
-        self.logger.debug(f"Added callback for {event_type.value} events")
+        # Check if callback is already registered to avoid duplicates
+        if callback not in self._event_callbacks[event_type]:
+            self._event_callbacks[event_type].append(callback)
+            if is_system_callback:
+                self._system_callbacks[event_type].add(callback)
+            self.logger.debug(f"Added callback for {event_type.value} events")
+        else:
+            self.logger.debug(f"Callback already exists for {event_type.value} events")
+    
+    def remove_event_callback(self, event_type: ServerEventType, callback: Callable[[ServerEvent], Awaitable[None]]) -> bool:
+        """Remove callback for server events"""
+        if event_type in self._event_callbacks:
+            try:
+                self._event_callbacks[event_type].remove(callback)
+                if callback in self._system_callbacks[event_type]:
+                    self._system_callbacks[event_type].remove(callback)
+                self.logger.debug(f"Removed callback for {event_type.value} events")
+                return True
+            except ValueError:
+                self.logger.warning(f"Callback not found for {event_type.value} events")
+                return False
+        return False
+    
+    def clear_event_callbacks(self, event_type: Optional[ServerEventType] = None) -> None:
+        """Clear all callbacks for a specific event type or all event types"""
+        if event_type is None:
+            # Clear all callbacks
+            for et in self._event_callbacks:
+                self._event_callbacks[et].clear()
+                self._system_callbacks[et].clear()
+            self.logger.info("Cleared all server event callbacks")
+        else:
+            # Clear callbacks for specific event type
+            self._event_callbacks[event_type].clear()
+            self._system_callbacks[event_type].clear()
+            self.logger.info(f"Cleared callbacks for {event_type.value} events")
+    
+    def clear_user_callbacks(self, event_type: Optional[ServerEventType] = None) -> None:
+        """Clear only user-added callbacks (not system callbacks) for a specific event type or all event types"""
+        if event_type is None:
+            # Clear only user callbacks for all event types
+            for et in self._event_callbacks:
+                self._event_callbacks[et] = [cb for cb in self._event_callbacks[et] if cb not in self._system_callbacks[et]]
+        else:
+            # Clear only user callbacks for specific event type
+            self._event_callbacks[event_type] = [cb for cb in self._event_callbacks[event_type] if cb not in self._system_callbacks[event_type]]
+        self.logger.info("Cleared only user-added callbacks")
     
     async def start_monitoring(self) -> None:
         """Start server status monitoring"""
@@ -94,6 +146,9 @@ class ServerMonitor:
         
         self.logger.info("Stopping server monitoring")
         self._shutdown_event.set()
+        
+        # Clear all event callbacks to prevent memory leaks
+        self.clear_event_callbacks()
     
     async def _monitoring_loop(self) -> None:
         """Main server monitoring loop"""

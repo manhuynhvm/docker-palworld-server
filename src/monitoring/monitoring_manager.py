@@ -36,26 +36,37 @@ class MonitoringManager:
     
     def _setup_event_callbacks(self) -> None:
         """Setup event callbacks for monitoring components"""
+        # Clear all existing callbacks first to avoid duplicates
+        self.player_monitor.clear_event_callbacks()
+        self.server_monitor.clear_event_callbacks()
+        
+        # Add system callbacks for player events
         self.player_monitor.add_event_callback(
             PlayerEventType.JOINED,
-            self.event_dispatcher.handle_player_event
+            self.event_dispatcher.handle_player_event,
+            is_system_callback=True
         )
         self.player_monitor.add_event_callback(
             PlayerEventType.LEFT,
-            self.event_dispatcher.handle_player_event
+            self.event_dispatcher.handle_player_event,
+            is_system_callback=True
         )
         
+        # Add system callbacks for server events
         self.server_monitor.add_event_callback(
             ServerEventType.STATUS_CHANGED,
-            self.event_dispatcher.handle_server_event
+            self.event_dispatcher.handle_server_event,
+            is_system_callback=True
         )
         self.server_monitor.add_event_callback(
             ServerEventType.HEALTH_WARNING,
-            self.event_dispatcher.handle_server_event
+            self.event_dispatcher.handle_server_event,
+            is_system_callback=True
         )
         self.server_monitor.add_event_callback(
             ServerEventType.PERFORMANCE_ISSUE,
-            self.event_dispatcher.handle_server_event
+            self.event_dispatcher.handle_server_event,
+            is_system_callback=True
         )
     
     async def start_monitoring(self) -> None:
@@ -99,6 +110,9 @@ class MonitoringManager:
         self.logger.info("🛑 Stopping monitoring system")
         self._shutdown_event.set()
         
+        # Remove event callbacks to prevent memory leaks
+        self._cleanup_event_callbacks()
+        
         await self.player_monitor.stop_monitoring()
         await self.server_monitor.stop_monitoring()
         await self.idle_restart_manager.stop_monitoring()
@@ -113,6 +127,26 @@ class MonitoringManager:
         
         self._monitoring_active = False
         self.logger.info("✅ Monitoring system stopped")
+    
+    def _cleanup_event_callbacks(self) -> None:
+        """Clean up event callbacks to prevent memory leaks"""
+        # Remove all callbacks from player monitor
+        self.player_monitor.clear_event_callbacks()
+        
+        # Remove all callbacks from server monitor
+        self.server_monitor.clear_event_callbacks()
+        
+        # Clear previous players to prevent memory accumulation
+        self.player_monitor._previous_players.clear()
+    
+    def reset_callbacks(self) -> None:
+        """Reset callbacks to initial state (only the ones set by _setup_event_callbacks)"""
+        # Clear all callbacks first
+        self.player_monitor.clear_event_callbacks()
+        self.server_monitor.clear_event_callbacks()
+        
+        # Then re-add the initial callbacks
+        self._setup_event_callbacks()
     
     async def handle_backup_completion(self, backup_info: dict) -> None:
         """Handle backup completion events"""
