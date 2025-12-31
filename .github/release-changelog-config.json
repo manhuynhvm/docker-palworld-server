@@ -1,0 +1,74 @@
+{
+	"categories": [
+		{
+			"title": "🚀 Features",
+			"labels": ["feature", "feat"]
+		},
+		{
+			"title": "🐛 Bug Fixes",
+			"labels": ["fix", "bug"]
+		},
+		{
+			"title": "📝 Documentation",
+			"labels": ["documentation", "docs"]
+		},
+		{
+			"title": "🏎️ Performance Improvements",
+			"labels": ["performance", "perf"]
+		},
+		{
+			"title": "♻️ Refactors",
+			"labels": ["refactor"]
+		},
+		{
+			"title": "🔧 Maintenance",
+			"labels": ["chore", "build", "ci"]
+		},
+		{
+			"title": "🧪 Tests",
+			"labels": ["test"]
+		},
+		{
+			"title": "⏪ Reverts",
+			"labels": ["revert"]
+		}
+	],
+	"ignore_labels": ["ignore"],
+	"template": "#${$CHANGELOG}",
+	"pr_template": "- ${$TITLE} @${$AUTHOR}",
+	"empty_template": "No significant changes.",
+	"label_extractor": [
+		{
+			"pattern": "^(feat|feature)(\\(.*\\))?:.*",
+			"target": ["feature"]
+		},
+		{
+			"pattern": "^fix(\\(.*\\))?:.*",
+			"target": ["fix"]
+		},
+		{
+			"pattern": "^docs(\\(.*\\))?:.*",
+			"target": ["documentation"]
+		},
+		{
+			"pattern": "^perf(\\(.*\\))?:.*",
+			"target": ["performance"]
+		},
+		{
+			"pattern": "^refactor(\\(.*\\))?:.*",
+			"target": ["refactor"]
+		},
+		{
+			"pattern": "^(chore|build|ci)(\\(.*\\))?:.*",
+			"target": ["chore"]
+		},
+		{
+			"pattern": "^test(\\(.*\\))?:.*",
+			"target": ["test"]
+		},
+		{
+			"pattern": "^revert:.*",
+			"target": ["revert"]
+		}
+	]
+}

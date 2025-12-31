@@ -1,544 +1,532 @@
 name: 🐳 Palworld Server Builder
 
 on:
-  # Daily automatic builds
-  # schedule:
-  #     - cron: "0 3 * * *"
+    # Daily automatic builds
+    # schedule:
+    #     - cron: "0 3 * * *"
 
-  # Manual trigger with options
-  workflow_dispatch:
-    inputs:
-      source_version:
-        description: "Palworld Server source version (e.g., latest, v1.0, 1.0.0)"
-        required: false
-        default: "latest"
-        type: string
+    # Manual trigger with options
+    workflow_dispatch:
+        inputs:
+            source_version:
+                description: "Palworld Server source version (e.g., latest, v1.0, 1.0.0)"
+                required: false
+                default: "latest"
+                type: string
 
-      build_version:
-        description: "Custom build version tag (optional - will use source version if empty)"
-        required: false
-        default: ""
-        type: string
+            build_version:
+                description: "Custom build version tag (optional - will use source version if empty)"
+                required: false
+                default: ""
+                type: string
 
-      verify_build:
-        description: "Verify build functionality"
-        required: false
-        default: false
-        type: boolean
+            verify_build:
+                description: "Verify build functionality"
+                required: false
+                default: false
+                type: boolean
 
-      force_rebuild:
-        description: "Force rebuild even if image exists"
-        required: false
-        default: false
-        type: boolean
+            force_rebuild:
+                description: "Force rebuild even if image exists"
+                required: false
+                default: false
+                type: boolean
 
-      clear_cache:
-        description: "Clear build cache before building"
-        required: false
-        default: false
-        type: boolean
+            clear_cache:
+                description: "Clear build cache before building"
+                required: false
+                default: false
+                type: boolean
 
 # Optimized concurrency management
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event.inputs.build_version || github.event.inputs.source_version || 'latest' }}
-  cancel-in-progress: true
+    group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event.inputs.build_version || github.event.inputs.source_version || 'latest' }}
+    cancel-in-progress: true
 
 # Enhanced global environment variables
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  DOCKERHUB_REPO: supersunho/palworld-server
-  DOCKER_BUILDKIT: 1
-  BUILDKIT_PROGRESS: plain
-  CACHE_VERSION: v1
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ${{ github.repository }}
+    DOCKERHUB_REPO: supersunho/palworld-server
+    DOCKER_BUILDKIT: 1
+    BUILDKIT_PROGRESS: plain
+    CACHE_VERSION: v1
 
 # Default permissions
 permissions:
-  contents: read
+    contents: read
 
 ##############################################################################
 # 1) Prepare version and matrix
 ##############################################################################
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    outputs:
-      source_version: ${{ steps.get-version.outputs.source_version }}
-      source_version_clean: ${{ steps.get-version.outputs.source_version_clean }}
-      source_version_base: ${{ steps.get-version.outputs.source_version_base }}
-      build_version: ${{ steps.get-version.outputs.build_version }}
-      build_version_clean: ${{ steps.get-version.outputs.build_version_clean }}
-      build_version_base: ${{ steps.get-version.outputs.build_version_base }}
-
-    steps:
-      - name: 🔍 Determine source and build versions
-        id: get-version
-        run: |
-          # =================================================================
-          # Step 1: Get Palworld Server source version
-          # =================================================================
-
-          if [ "${{ github.event.inputs.source_version }}" = "latest" ] || [ -z "${{ github.event.inputs.source_version }}" ]; then
-            echo "🔍 Using latest Palworld Server version"
-            SOURCE_VERSION="latest"
-            echo "📦 Using latest version as source: $SOURCE_VERSION"
-          else
-            SOURCE_VERSION="${{ github.event.inputs.source_version }}"
-            echo "📌 Using specified source version: $SOURCE_VERSION"
-          fi
-
-          # =================================================================
-          # Step 2: Determine build version (custom or fallback to source)
-          # =================================================================
-
-          if [ -n "${{ github.event.inputs.build_version }}" ]; then
-            BUILD_VERSION="${{ github.event.inputs.build_version }}"
-            echo "🏷️ Using custom build version: $BUILD_VERSION"
-          else
-            BUILD_VERSION="$SOURCE_VERSION"
-            echo "🏷️ Using source version as build version: $BUILD_VERSION"
-          fi
-
-          # =================================================================
-          # Step 3: Process version strings for Docker tags
-          # =================================================================
-
-          # Clean versions (remove 'v' prefix if present)
-          SOURCE_VERSION_CLEAN=${SOURCE_VERSION#v}
-          BUILD_VERSION_CLEAN=${BUILD_VERSION#v}
-
-          # Base versions (remove suffix like '-beta', '-rc1' etc)
-          SOURCE_VERSION_BASE=${SOURCE_VERSION_CLEAN%%-*}
-          BUILD_VERSION_BASE=${BUILD_VERSION_CLEAN%%-*}
-
-          # =================================================================
-          # Step 4: Output summary and export variables
-          # =================================================================
-
-          echo ""
-          echo "📋 Version Summary:"
-          echo "├─ 🎯 Palworld Server Source : $SOURCE_VERSION ($SOURCE_VERSION_CLEAN)"
-          echo "├─ 🏷️ Build/Release Tag     : $BUILD_VERSION ($BUILD_VERSION_CLEAN)"
-          echo "├─ 🔧 Source Base Version   : $SOURCE_VERSION_BASE"
-          echo "└─ 🚀 Build Base Version    : $BUILD_VERSION_BASE"
-          echo ""
-
-          # Export all versions for use in subsequent jobs
-          echo "source_version=$SOURCE_VERSION" >> $GITHUB_OUTPUT
-          echo "source_version_clean=$SOURCE_VERSION_CLEAN" >> $GITHUB_OUTPUT
-          echo "source_version_base=$SOURCE_VERSION_BASE" >> $GITHUB_OUTPUT
-
-          echo "build_version=$BUILD_VERSION" >> $GITHUB_OUTPUT
-          echo "build_version_clean=$BUILD_VERSION_CLEAN" >> $GITHUB_OUTPUT
-          echo "build_version_base=$BUILD_VERSION_BASE" >> $GITHUB_OUTPUT
-
-  ##############################################################################
-  # 2) Build ARM64 image
-  ##############################################################################
-  build:
-    needs: prepare
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: 🎯 Display build target information
-        run: |
-          echo "🎯 Building Palworld Server container for: linux/arm64"
-          echo "📦 Palworld Server Source: ${{ needs.prepare.outputs.source_version_base }}"
-          echo "🏷️ Build Tag: ${{ needs.prepare.outputs.build_version_base }}"
-
-      - name: 🔍 Check existing images via registry API
-        id: check-images
-        run: |
-          IMAGE_TAG="${{ needs.prepare.outputs.build_version_base }}-arm64"
-          echo "🔍 Checking if image exists: $IMAGE_TAG"
-
-          # Always build on workflow_dispatch with force_rebuild
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-            echo "🔄 Force rebuild enabled via workflow_dispatch"
-            echo "build_image=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Check GHCR for existing image
-          TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
-
-          echo "🔍 Checking GHCR for existing image..."
-          GHCR_RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            "https://api.github.com/user/packages/container/$REPO_NAME/versions" 2>/dev/null || echo '[]')
-
-          if echo "$GHCR_RESPONSE" | jq -e --arg TAG "$IMAGE_TAG" '.[] | select(.metadata.container.tags[]? == $TAG)' >/dev/null 2>&1; then
-            echo "✅ Image $IMAGE_TAG already exists in GHCR"
-            if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-              echo "🔄 Force rebuild enabled, proceeding anyway"
-              echo "build_image=true" >> $GITHUB_OUTPUT
-            else
-              echo "⏭️ Skipping build (image exists, use force_rebuild to override)"
-              echo "build_image=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "❌ Image $IMAGE_TAG not found in GHCR, proceeding with build"
-            echo "build_image=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 📥 Checkout repository
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: actions/checkout@v4
-
-      - name: 🛠️ Set up QEMU
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/arm64
-
-      - name: 🛠️ Set up Docker Buildx
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          use: true
-          install: true
-
-      - name: 🔑 Login to GHCR
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🔑 Login to Docker Hub
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: 📦 Initialize cache directories
-        if: steps.check-images.outputs.build_image == 'true'
-        run: |
-          mkdir -p /tmp/apt-cache /tmp/apt-lib
-          echo "📁 Cache directories initialized"
-
-      - name: 💾 Cache build dependencies
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: actions/cache@v4
-        id: system-cache
-        with:
-          path: |
-            /tmp/apt-cache
-            /tmp/apt-lib
-          key: ${{ env.CACHE_VERSION }}-palworld-cache-${{ runner.os }}-${{ runner.arch }}-arm64-${{ needs.prepare.outputs.build_version_base }}
-          restore-keys: |
-            ${{ env.CACHE_VERSION }}-palworld-cache-${{ runner.os }}-${{ runner.arch }}-arm64-
-
-      - name: 🚀 Build and push (linux/arm64)
-        if: steps.check-images.outputs.build_image == 'true'
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          no-cache: ${{ github.event.inputs.clear_cache == 'true' }}
-          cache-from: |
-            type=gha,scope=${{ env.CACHE_VERSION }}-palworld-arm64-${{ needs.prepare.outputs.build_version_base }}
-          cache-to: |
-            type=gha,mode=max,scope=${{ env.CACHE_VERSION }}-palworld-arm64-${{ needs.prepare.outputs.build_version_base }}
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
-            ${{ env.DOCKERHUB_REPO }}:${{ needs.prepare.outputs.build_version_base }}-arm64
-            ${{ env.DOCKERHUB_REPO }}:latest-arm64
-          provenance: false
-
-      - name: 🧪 Comprehensive container verification
-        if: steps.check-images.outputs.build_image == 'true' && github.event.inputs.verify_build == 'true'
-        run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64"
-          echo "🔍 Starting verification suite for arm64..."
-
-          echo "📋 Test 1: Binary Verification"
-          docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" ls /home/pal/palworld-server || echo " - ⚠️ Palworld server binary check completed"
-
-          echo "📋 Test 2: Health Check"
-          docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" python3 /scripts/healthcheck.py --help >/dev/null \
-            && echo " - ✅ Health check command working" \
-            || echo " - ❌ Health check command failed"
-
-          echo "📋 Test 3: Server Manager"
-          docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" python3 -c "import src.server_manager; print('Server manager import successful')" \
-            && echo " - ✅ Server manager import working" \
-            || echo " - ❌ Server manager import failed"
-
-          echo "📋 Test 4: Configuration"
-          docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" ls /config/ || echo " - ⚠️ Config directory check completed"
-
-          echo "🎉 Verification completed for arm64!"
-
-      - name: 📄 Export digest
-        if: steps.check-images.outputs.build_image == 'true'
-        run: |
-          mkdir -p /tmp/digests/arm64
-          echo "${{ steps.build.outputs.digest }}" > /tmp/digests/arm64/digest.txt
-          echo "📝 Digest saved for arm64"
-
-      - name: 📤 Upload digest artifact
-        if: steps.check-images.outputs.build_image == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-arm64
-          path: /tmp/digests/arm64/digest.txt
-          retention-days: 1
-
-      - name: 📊 Display cache utilization
-        run: |
-          echo "📊 Cache Utilization Statistics:"
-          echo "🗂️ APT Cache: $(du -sh /tmp/apt-cache 2>/dev/null | cut -f1 || echo '0B')"
-          echo "🗂️ APT Lib: $(du -sh /tmp/apt-lib 2>/dev/null | cut -f1 || echo '0B')"
-          echo "💾 Cache Hit: ${{ steps.system-cache.outputs.cache-hit }}"
-
-  ##############################################################################
-  # 3) Create manifest for ARM64-only
-  ##############################################################################
-  create-manifest:
-    needs: [prepare, build]
-    if: always() && needs.build.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: 📥 Download digest artifact
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: false
-
-      - name: 🔍 Debug Check downloaded artifact
-        run: |
-          echo "🔍 Debugging artifact download..."
-          echo "📁 Contents of /tmp/digests:"
-          ls -la /tmp/digests/ || echo "❌ /tmp/digests directory not found"
-
-          echo ""
-          echo "📂 Checking arm64 architecture directory:"
-          if [ -d "/tmp/digests/arm64" ]; then
-            echo "✅ arm64 directory exists"
-            if [ -f "/tmp/digests/digests-arm64/digest.txt" ]; then
-              echo "  📄 digest.txt exists: $(cat /tmp/digests/digests-arm64/digest.txt)"
-            else
-              echo "  ❌ digest.txt missing"
-            fi
-          else
-            echo "❌ arm64 directory not found"
-          fi
-
-          echo ""
-          echo "🗂️ All files in /tmp/digests:"
-          find /tmp/digests -type f 2>/dev/null || echo "No files found"
-
-      - name: 🛠️ Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 🔑 Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🔑 Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: 🏷️ Create ARM64-only manifests
-        run: |
-          VERSION="${{ needs.prepare.outputs.build_version_base }}"
-          echo "📦 Creating ARM64-only manifests..."
-          echo "🎯 Target version: $VERSION"
-
-          # Verify ARM64 image exists
-          if [ -f "/tmp/digests/digests-arm64/digest.txt" ]; then
-            echo "✅ Confirmed ARM64 image availability"
-          else
-            echo "❌ ARM64 image not found, cannot create manifests"
-            echo "🔍 This usually means:"
-            echo "   1. Build job was skipped due to existing images"
-            echo "   2. Force rebuild option should be enabled"
-            echo "   3. Digest artifacts were not properly uploaded"
-            exit 1
-          fi
-
-          # Create manifests for both registries
-          for registry in ghcr dockerhub; do
-            if [ "$registry" = "ghcr" ]; then
-              PREFIX="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-            else
-              PREFIX="${{ env.DOCKERHUB_REPO }}"
-            fi
-            
-            ARM64_IMAGE="${PREFIX}:${VERSION}-arm64"
-            LATEST_ARM64_IMAGE="${PREFIX}:latest-arm64"
-            
-            echo "🏗️ Creating version manifest: ${PREFIX}:${VERSION} -> ${ARM64_IMAGE}"
-            docker buildx imagetools create \
-              --tag ${PREFIX}:${VERSION} \
-              ${ARM64_IMAGE}
-            
-            echo "🏗️ Creating latest manifest: ${PREFIX}:latest -> ${LATEST_ARM64_IMAGE}"
-            docker buildx imagetools create \
-              --tag ${PREFIX}:latest \
-              ${LATEST_ARM64_IMAGE}
-            
-            echo "✅ ARM64-only manifests created for $registry"
-          done
-
-  ##############################################################################
-  # 4) Build summary
-  ##############################################################################
-  summary:
-    needs: [prepare, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Download digest artifact
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: false
-
-      - name: 📊 Generate comprehensive build summary for Palworld Server
-        run: |
-          # Pre-calculate digest values and status
-          ARM64_DIGEST=$(cat /tmp/digests/digests-arm64/digest.txt 2>/dev/null | cut -c1-12 || echo "N/A")
-          ARM64_STATUS=$([ -f /tmp/digests/digests-arm64/digest.txt ] && echo "✅ Success" || echo "❌ Failed")
-
-          BUILD_COUNT=$(ls /tmp/digests 2>/dev/null | wc -l || echo "0")
-          BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')
-
-          # Write summary with pre-calculated values
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          # 🚀 Palworld Server ARM64 Build Summary
-
-          **Build Date**: $BUILD_DATE  
-          **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
-          **Build/Release Tag**: ${{ needs.prepare.outputs.build_version_base }}  
-          **Source Release Tag**: ${{ needs.prepare.outputs.source_version }}  
-          **Build Number**: #${{ github.run_number }}  
-          **Repository**: [${{ github.repository }}](https://github.com/${{ github.repository }})  
-          **Workflow Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-          ## 🏗️ ARM64 Build Results
-
-          ### 📦 Container Image Digests
-          | Architecture | Digest | Status |
-          |--------------|--------|--------|
-          | **arm64** | \`${ARM64_DIGEST}...\` | ${ARM64_STATUS} |
-
-          ### 🐳 Published Container Registries
-
-          #### 🎯 Docker Hub (Primary)
-          \`\`\`
-          # ARM64-specific image
-          docker pull ${{ env.DOCKERHUB_REPO }}:latest-arm64    # ARM64 only
-          docker pull ${{ env.DOCKERHUB_REPO }}:${{ needs.prepare.outputs.build_version_base }}-arm64
-          \`\`\`
-
-          #### 🔄 GitHub Container Registry (GHCR)
-          \`\`\`
-          # ARM64-specific image
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64
-          \`\`\`
-
-          ## 🚀 Quick Start Commands (ARM64)
-
-          ### 🎯 Universal Usage (ARM64)
-          \`\`\`
-          # ARM64-specific container
-          docker run -it --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64
-
-          # Check version (universal command)
-          docker run --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64 python3 -c "import sys; print('Python version:', sys.version)"
-
-          # Get help (works on all platforms)
-          docker run --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64 python3 /scripts/healthcheck.py --help
-          \`\`
-
-          ## 🎉 Enhanced Features
-
-          ✅ **ARM64 Optimized**: Single architecture for ARM64 platforms  
-          ✅ **Dual Registry**: Available on Docker Hub and GHCR  
-          ✅ **Version Control**: Separate source and build version management  
-
-          **🎉 Palworld Server ARM64 build completed successfully!**  
-          **📊 Total Architectures Built**: $BUILD_COUNT  
-          **🚀 Platform**: ARM64 optimized  
-
-          *Generated by [Palworld Server Builder](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) • Build #${{ github.run_number }}*
-          EOF
-
-  ##############################################################################
-  # 5) Create GitHub Release
-  ##############################################################################
-  create-release:
-    needs: [prepare, create-manifest, summary]
-    if: always() && needs.create-manifest.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for commit history
-      - name: 🕐 Set current date
-        run: echo "BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
-      - name: 📋 Generate release notes with commit history
-        run: |
-          # Get the latest tag to compare against
-          LATEST_TAG=$(git tag --sort=-creatordate | head -n 1)
-
-          if [ -n "$LATEST_TAG" ]; then
-            echo "## 📋 What's Changed" >> release_notes.md
-            echo "" >> release_notes.md
-            git log --pretty=format:"- %h %s (%an)" $LATEST_TAG..HEAD >> release_notes.md
-            echo "" >> release_notes.md
-            echo "" >> release_notes.md
-          else
-            echo "## 📋 What's Changed" >> release_notes.md
-            echo "" >> release_notes.md
-            git log --pretty=format:"- %h %s (%an)" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "" >> release_notes.md
-          fi
-      - name: 🏷️ Create comprehensive GitHub Release for Palworld Server
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.build_version }}-build-${{ github.run_number }}
-          name: "Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }} (Build #${{ github.run_number }})"
-          body: |
-            # 🚀 Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }}
-
-            **Build Date**: ${{ env.BUILD_DATE }}  
-            **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
-            **Build/Release Version**: ${{ needs.prepare.outputs.build_version_base }}  
-            **Platform**: ARM64 optimized  
-            **Build Workflow**: #${{ github.run_number }}
-
-
-            ${{ steps.generate_notes.outputs.release_notes }}
-
-          files: /tmp/digests/*/digest.txt
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    prepare:
+        runs-on: ubuntu-latest
+        outputs:
+            source_version: ${{ steps.get-version.outputs.source_version }}
+            source_version_clean: ${{ steps.get-version.outputs.source_version_clean }}
+            source_version_base: ${{ steps.get-version.outputs.source_version_base }}
+            build_version: ${{ steps.get-version.outputs.build_version }}
+            build_version_clean: ${{ steps.get-version.outputs.build_version_clean }}
+            build_version_base: ${{ steps.get-version.outputs.build_version_base }}
+
+        steps:
+            - name: 🔍 Determine source and build versions
+              id: get-version
+              run: |
+                  # =================================================================
+                  # Step 1: Get Palworld Server source version
+                  # =================================================================
+
+                  if [ "${{ github.event.inputs.source_version }}" = "latest" ] || [ -z "${{ github.event.inputs.source_version }}" ]; then
+                    echo "🔍 Using latest Palworld Server version"
+                    SOURCE_VERSION="latest"
+                    echo "📦 Using latest version as source: $SOURCE_VERSION"
+                  else
+                    SOURCE_VERSION="${{ github.event.inputs.source_version }}"
+                    echo "📌 Using specified source version: $SOURCE_VERSION"
+                  fi
+
+                  # =================================================================
+                  # Step 2: Determine build version (custom or fallback to source)
+                  # =================================================================
+
+                  if [ -n "${{ github.event.inputs.build_version }}" ]; then
+                    BUILD_VERSION="${{ github.event.inputs.build_version }}"
+                    echo "🏷️ Using custom build version: $BUILD_VERSION"
+                  else
+                    BUILD_VERSION="$SOURCE_VERSION"
+                    echo "🏷️ Using source version as build version: $BUILD_VERSION"
+                  fi
+
+                  # =================================================================
+                  # Step 3: Process version strings for Docker tags
+                  # =================================================================
+
+                  # Clean versions (remove 'v' prefix if present)
+                  SOURCE_VERSION_CLEAN=${SOURCE_VERSION#v}
+                  BUILD_VERSION_CLEAN=${BUILD_VERSION#v}
+
+                  # Base versions (remove suffix like '-beta', '-rc1' etc)
+                  SOURCE_VERSION_BASE=${SOURCE_VERSION_CLEAN%%-*}
+                  BUILD_VERSION_BASE=${BUILD_VERSION_CLEAN%%-*}
+
+                  # =================================================================
+                  # Step 4: Output summary and export variables
+                  # =================================================================
+
+                  echo ""
+                  echo "📋 Version Summary:"
+                  echo "├─ 🎯 Palworld Server Source : $SOURCE_VERSION ($SOURCE_VERSION_CLEAN)"
+                  echo "├─ 🏷️ Build/Release Tag     : $BUILD_VERSION ($BUILD_VERSION_CLEAN)"
+                  echo "├─ 🔧 Source Base Version   : $SOURCE_VERSION_BASE"
+                  echo "└─ 🚀 Build Base Version    : $BUILD_VERSION_BASE"
+                  echo ""
+
+                  # Export all versions for use in subsequent jobs
+                  echo "source_version=$SOURCE_VERSION" >> $GITHUB_OUTPUT
+                  echo "source_version_clean=$SOURCE_VERSION_CLEAN" >> $GITHUB_OUTPUT
+                  echo "source_version_base=$SOURCE_VERSION_BASE" >> $GITHUB_OUTPUT
+
+                  echo "build_version=$BUILD_VERSION" >> $GITHUB_OUTPUT
+                  echo "build_version_clean=$BUILD_VERSION_CLEAN" >> $GITHUB_OUTPUT
+                  echo "build_version_base=$BUILD_VERSION_BASE" >> $GITHUB_OUTPUT
+
+    ##############################################################################
+    # 2) Build ARM64 image
+    ##############################################################################
+    build:
+        needs: prepare
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - name: 🎯 Display build target information
+              run: |
+                  echo "🎯 Building Palworld Server container for: linux/arm64"
+                  echo "📦 Palworld Server Source: ${{ needs.prepare.outputs.source_version_base }}"
+                  echo "🏷️ Build Tag: ${{ needs.prepare.outputs.build_version_base }}"
+
+            - name: 🔍 Check existing images via registry API
+              id: check-images
+              run: |
+                  IMAGE_TAG="${{ needs.prepare.outputs.build_version_base }}-arm64"
+                  echo "🔍 Checking if image exists: $IMAGE_TAG"
+
+                  # Always build on workflow_dispatch with force_rebuild
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+                    echo "🔄 Force rebuild enabled via workflow_dispatch"
+                    echo "build_image=true" >> $GITHUB_OUTPUT
+                    exit 0
+                  fi
+
+                  # Check GHCR for existing image
+                  TOKEN="${{ secrets.GITHUB_TOKEN }}"
+                  REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+
+                  echo "🔍 Checking GHCR for existing image..."
+                  GHCR_RESPONSE=$(curl -s -H "Authorization: Bearer $TOKEN" \
+                    "https://api.github.com/user/packages/container/$REPO_NAME/versions" 2>/dev/null || echo '[]')
+
+                  if echo "$GHCR_RESPONSE" | jq -e --arg TAG "$IMAGE_TAG" '.[] | select(.metadata.container.tags[]? == $TAG)' >/dev/null 2>&1; then
+                    echo "✅ Image $IMAGE_TAG already exists in GHCR"
+                    if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+                      echo "🔄 Force rebuild enabled, proceeding anyway"
+                      echo "build_image=true" >> $GITHUB_OUTPUT
+                    else
+                      echo "⏭️ Skipping build (image exists, use force_rebuild to override)"
+                      echo "build_image=false" >> $GITHUB_OUTPUT
+                    fi
+                  else
+                    echo "❌ Image $IMAGE_TAG not found in GHCR, proceeding with build"
+                    echo "build_image=true" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: 📥 Checkout repository
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: actions/checkout@v4
+
+            - name: 🛠️ Set up QEMU
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: docker/setup-qemu-action@v3
+              with:
+                  platforms: linux/arm64
+
+            - name: 🛠️ Set up Docker Buildx
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: docker/setup-buildx-action@v3
+              with:
+                  driver: docker-container
+                  use: true
+                  install: true
+
+            - name: 🔑 Login to GHCR
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🔑 Login to Docker Hub
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: 📦 Initialize cache directories
+              if: steps.check-images.outputs.build_image == 'true'
+              run: |
+                  mkdir -p /tmp/apt-cache /tmp/apt-lib
+                  echo "📁 Cache directories initialized"
+
+            - name: 💾 Cache build dependencies
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: actions/cache@v4
+              id: system-cache
+              with:
+                  path: |
+                      /tmp/apt-cache
+                      /tmp/apt-lib
+                  key: ${{ env.CACHE_VERSION }}-palworld-cache-${{ runner.os }}-${{ runner.arch }}-arm64-${{ needs.prepare.outputs.build_version_base }}
+                  restore-keys: |
+                      ${{ env.CACHE_VERSION }}-palworld-cache-${{ runner.os }}-${{ runner.arch }}-arm64-
+
+            - name: 🚀 Build and push (linux/arm64)
+              if: steps.check-images.outputs.build_image == 'true'
+              id: build
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  platforms: linux/arm64
+                  push: true
+                  no-cache: ${{ github.event.inputs.clear_cache == 'true' }}
+                  cache-from: |
+                      type=gha,scope=${{ env.CACHE_VERSION }}-palworld-arm64-${{ needs.prepare.outputs.build_version_base }}
+                  cache-to: |
+                      type=gha,mode=max,scope=${{ env.CACHE_VERSION }}-palworld-arm64-${{ needs.prepare.outputs.build_version_base }}
+                  build-args: |
+                      BUILDKIT_INLINE_CACHE=1
+                  tags: |
+                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64
+                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+                      ${{ env.DOCKERHUB_REPO }}:${{ needs.prepare.outputs.build_version_base }}-arm64
+                      ${{ env.DOCKERHUB_REPO }}:latest-arm64
+                  provenance: false
+
+            - name: 🧪 Comprehensive container verification
+              if: steps.check-images.outputs.build_image == 'true' && github.event.inputs.verify_build == 'true'
+              run: |
+                  IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64"
+                  echo "🔍 Starting verification suite for arm64..."
+
+                  echo "📋 Test 1: Binary Verification"
+                  docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" ls /home/pal/palworld-server || echo " - ⚠️ Palworld server binary check completed"
+
+                  echo "📋 Test 2: Health Check"
+                  docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" python3 /scripts/healthcheck.py --help >/dev/null \
+                    && echo " - ✅ Health check command working" \
+                    || echo " - ❌ Health check command failed"
+
+                  echo "📋 Test 3: Server Manager"
+                  docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" python3 -c "import src.server_manager; print('Server manager import successful')" \
+                    && echo " - ✅ Server manager import working" \
+                    || echo " - ❌ Server manager import failed"
+
+                  echo "📋 Test 4: Configuration"
+                  docker run --rm --platform linux/arm64 --entrypoint "" "$IMAGE" ls /config/ || echo " - ⚠️ Config directory check completed"
+
+                  echo "🎉 Verification completed for arm64!"
+
+            - name: 📄 Export digest
+              if: steps.check-images.outputs.build_image == 'true'
+              run: |
+                  mkdir -p /tmp/digests/arm64
+                  echo "${{ steps.build.outputs.digest }}" > /tmp/digests/arm64/digest.txt
+                  echo "📝 Digest saved for arm64"
+
+            - name: 📤 Upload digest artifact
+              if: steps.check-images.outputs.build_image == 'true'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-arm64
+                  path: /tmp/digests/arm64/digest.txt
+                  retention-days: 1
+
+            - name: 📊 Display cache utilization
+              run: |
+                  echo "📊 Cache Utilization Statistics:"
+                  echo "🗂️ APT Cache: $(du -sh /tmp/apt-cache 2>/dev/null | cut -f1 || echo '0B')"
+                  echo "🗂️ APT Lib: $(du -sh /tmp/apt-lib 2>/dev/null | cut -f1 || echo '0B')"
+                  echo "💾 Cache Hit: ${{ steps.system-cache.outputs.cache-hit }}"
+
+    ##############################################################################
+    # 3) Create manifest for ARM64-only
+    ##############################################################################
+    create-manifest:
+        needs: [prepare, build]
+        if: always() && needs.build.result == 'success'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - name: 📥 Download digest artifact
+              uses: actions/download-artifact@v4
+              with:
+                  path: /tmp/digests
+                  pattern: digests-*
+                  merge-multiple: false
+
+            - name: 🔍 Debug Check downloaded artifact
+              run: |
+                  echo "🔍 Debugging artifact download..."
+                  echo "📁 Contents of /tmp/digests:"
+                  ls -la /tmp/digests/ || echo "❌ /tmp/digests directory not found"
+
+                  echo ""
+                  echo "📂 Checking arm64 architecture directory:"
+                  if [ -d "/tmp/digests/arm64" ]; then
+                    echo "✅ arm64 directory exists"
+                    if [ -f "/tmp/digests/digests-arm64/digest.txt" ]; then
+                      echo "  📄 digest.txt exists: $(cat /tmp/digests/digests-arm64/digest.txt)"
+                    else
+                      echo "  ❌ digest.txt missing"
+                    fi
+                  else
+                    echo "❌ arm64 directory not found"
+                  fi
+
+                  echo ""
+                  echo "🗂️ All files in /tmp/digests:"
+                  find /tmp/digests -type f 2>/dev/null || echo "No files found"
+
+            - name: 🛠️ Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: 🔑 Login to GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 🔑 Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: 🏷️ Create ARM64-only manifests
+              run: |
+                  VERSION="${{ needs.prepare.outputs.build_version_base }}"
+                  echo "📦 Creating ARM64-only manifests..."
+                  echo "🎯 Target version: $VERSION"
+
+                  # Verify ARM64 image exists
+                  if [ -f "/tmp/digests/digests-arm64/digest.txt" ]; then
+                    echo "✅ Confirmed ARM64 image availability"
+                  else
+                    echo "❌ ARM64 image not found, cannot create manifests"
+                    echo "🔍 This usually means:"
+                    echo "   1. Build job was skipped due to existing images"
+                    echo "   2. Force rebuild option should be enabled"
+                    echo "   3. Digest artifacts were not properly uploaded"
+                    exit 1
+                  fi
+
+                  # Create manifests for both registries
+                  for registry in ghcr dockerhub; do
+                    if [ "$registry" = "ghcr" ]; then
+                      PREFIX="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+                    else
+                      PREFIX="${{ env.DOCKERHUB_REPO }}"
+                    fi
+                    
+                    ARM64_IMAGE="${PREFIX}:${VERSION}-arm64"
+                    LATEST_ARM64_IMAGE="${PREFIX}:latest-arm64"
+                    
+                    echo "🏗️ Creating version manifest: ${PREFIX}:${VERSION} -> ${ARM64_IMAGE}"
+                    docker buildx imagetools create \
+                      --tag ${PREFIX}:${VERSION} \
+                      ${ARM64_IMAGE}
+                    
+                    echo "🏗️ Creating latest manifest: ${PREFIX}:latest -> ${LATEST_ARM64_IMAGE}"
+                    docker buildx imagetools create \
+                      --tag ${PREFIX}:latest \
+                      ${LATEST_ARM64_IMAGE}
+                    
+                    echo "✅ ARM64-only manifests created for $registry"
+                  done
+
+    ##############################################################################
+    # 4) Build summary
+    ##############################################################################
+    summary:
+        needs: [prepare, build]
+        runs-on: ubuntu-latest
+        steps:
+            - name: 📥 Download digest artifact
+              uses: actions/download-artifact@v4
+              with:
+                  path: /tmp/digests
+                  pattern: digests-*
+                  merge-multiple: false
+
+            - name: 📊 Generate comprehensive build summary for Palworld Server
+              run: |
+                  # Pre-calculate digest values and status
+                  ARM64_DIGEST=$(cat /tmp/digests/digests-arm64/digest.txt 2>/dev/null | cut -c1-12 || echo "N/A")
+                  ARM64_STATUS=$([ -f /tmp/digests/digests-arm64/digest.txt ] && echo "✅ Success" || echo "❌ Failed")
+
+                  BUILD_COUNT=$(ls /tmp/digests 2>/dev/null | wc -l || echo "0")
+                  BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')
+
+                  # Write summary with pre-calculated values
+                  cat >> $GITHUB_STEP_SUMMARY << EOF
+                  # 🚀 Palworld Server ARM64 Build Summary
+
+                  **Build Date**: $BUILD_DATE  
+                  **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
+                  **Build/Release Tag**: ${{ needs.prepare.outputs.build_version_base }}  
+                  **Source Release Tag**: ${{ needs.prepare.outputs.source_version }}  
+                  **Build Number**: #${{ github.run_number }}  
+                  **Repository**: [${{ github.repository }}](https://github.com/${{ github.repository }})  
+                  **Workflow Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+                  ## 🏗️ ARM64 Build Results
+
+                  ### 📦 Container Image Digests
+                  | Architecture | Digest | Status |
+                  |--------------|--------|--------|
+                  | **arm64** | \`${ARM64_DIGEST}...\` | ${ARM64_STATUS} |
+
+                  ### 🐳 Published Container Registries
+
+                  #### 🎯 Docker Hub (Primary)
+                  \`\`\`
+                  # ARM64-specific image
+                  docker pull ${{ env.DOCKERHUB_REPO }}:latest-arm64    # ARM64 only
+                  docker pull ${{ env.DOCKERHUB_REPO }}:${{ needs.prepare.outputs.build_version_base }}-arm64
+                  \`\`\`
+
+                  #### 🔄 GitHub Container Registry (GHCR)
+                  \`\`\`
+                  # ARM64-specific image
+                  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+                  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64
+                  \`\`\`
+
+                  ## 🚀 Quick Start Commands (ARM64)
+
+                  ### 🎯 Universal Usage (ARM64)
+                  \`\`\`
+                  # ARM64-specific container
+                  docker run -it --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64
+
+                  # Check version (universal command)
+                  docker run --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64 python3 -c "import sys; print('Python version:', sys.version)"
+
+                  # Get help (works on all platforms)
+                  docker run --rm ${{ env.DOCKERHUB_REPO }}:latest-arm64 python3 /scripts/healthcheck.py --help
+                  \`\`
+
+                  ## 🎉 Enhanced Features
+
+                  ✅ **ARM64 Optimized**: Single architecture for ARM64 platforms  
+                  ✅ **Dual Registry**: Available on Docker Hub and GHCR  
+                  ✅ **Version Control**: Separate source and build version management  
+
+                  **🎉 Palworld Server ARM64 build completed successfully!**  
+                  **📊 Total Architectures Built**: $BUILD_COUNT  
+                  **🚀 Platform**: ARM64 optimized  
+
+                  *Generated by [Palworld Server Builder](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) • Build #${{ github.run_number }}*
+                  EOF
+
+    ##############################################################################
+    # 5) Create GitHub Release
+    ##############################################################################
+    create-release:
+        needs: [prepare, create-manifest, summary]
+        if: always() && needs.create-manifest.result == 'success'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0 # Fetch all history for commit history
+            - name: 🕐 Set current date
+              run: echo "BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+            - name: 📋 Build Changelog
+              id: build_changelog
+              uses: mikepenz/release-changelog-builder-action@v5
+              with:
+                  configuration: ".github/release-changelog-config.json"
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            - name: 🏷️ Create comprehensive GitHub Release for Palworld Server
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ needs.prepare.outputs.build_version }}-build-${{ github.run_number }}
+                  name: "Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }} (Build #${{ github.run_number }})"
+                  body: |
+                      # 🚀 Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }}
+
+                      **Build Date**: ${{ env.BUILD_DATE }}  
+                      **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
+                      **Build/Release Version**: ${{ needs.prepare.outputs.build_version_base }}  
+                      **Platform**: ARM64 optimized  
+                      **Build Workflow**: #${{ github.run_number }}
+
+                      ${{ steps.build_changelog.outputs.changelog }}
+
+                  files: /tmp/digests/*/digest.txt
+                  draft: false
+                  prerelease: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
