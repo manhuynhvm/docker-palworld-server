@@ -502,29 +502,141 @@ jobs:
                   fetch-depth: 0 # Fetch all history for commit history
             - name: 🕐 Set current date
               run: echo "BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
-            - name: 📋 Build Changelog
-              id: build_changelog
-              uses: mikepenz/release-changelog-builder-action@v5
-              with:
-                  configuration: ".github/release-changelog-config.json"
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            - name: 📝 Generate release notes with categorized commit history
+              id: release-notes
+              run: |
+                  # Get the tag of the previous release to compare commits
+                  # We use the most recent tag that IS NOT the one we are about to create
+                  PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ needs.prepare.outputs.build_version }}" | head -n 1 2>/dev/null)
+
+                  if [ -z "$PREV_TAG" ]; then
+                    echo "🔍 No previous tag found, using initial commit"
+                    PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+                  else
+                    echo "🔍 Previous tag found: $PREV_TAG"
+                  fi
+
+                  echo "📋 Fetching commits from $PREV_TAG to HEAD"
+
+                  # Initialize categorized commit lists
+                  FEATURES=""
+                  BUG_FIXES=""
+                  DOCS=""
+                  PERF=""
+                  REFACTOR=""
+                  MAINTENANCE=""
+                  OTHERS=""
+
+                  # Get commits and categorize them
+                  while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                      COMMIT_HASH=$(echo "$line" | cut -d'|' -f1)
+                      COMMIT_SUBJECT=$(echo "$line" | cut -d'|' -f2-)
+                      
+                      # Categorize commits based on conventional commit prefixes
+                      if [[ $COMMIT_SUBJECT =~ ^feat(\(.+\))?:[[:space:]]* ]]; then
+                        FEATURES="${FEATURES}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      elif [[ $COMMIT_SUBJECT =~ ^fix(\(.+\))?:[[:space:]]* ]]; then
+                        BUG_FIXES="${BUG_FIXES}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      elif [[ $COMMIT_SUBJECT =~ ^docs(\(.+\))?:[[:space:]]* ]]; then
+                        DOCS="${DOCS}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      elif [[ $COMMIT_SUBJECT =~ ^perf(\(.+\))?:[[:space:]]* ]]; then
+                        PERF="${PERF}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      elif [[ $COMMIT_SUBJECT =~ ^refactor(\(.+\))?:[[:space:]]* ]]; then
+                        REFACTOR="${REFACTOR}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      elif [[ $COMMIT_SUBJECT =~ ^(chore|build|ci|style|test)(\(.+\))?:[[:space:]]* ]]; then
+                        MAINTENANCE="${MAINTENANCE}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      else
+                        OTHERS="${OTHERS}- ${COMMIT_SUBJECT} (${COMMIT_HASH})"$'\n'
+                      fi
+                    fi
+                  done < <(git log --oneline "${PREV_TAG}..HEAD" --pretty=format:"%h|%s" | sort -k2)
+
+                  # Create release notes body with categorized commits
+                  RELEASE_NOTES="# 🚀 Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }}
+
+                  **Build Date**: ${{ env.BUILD_DATE }}  
+                  **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
+                  **Build/Release Version**: ${{ needs.prepare.outputs.build_version_base }}  
+                  **Platform**: ARM64 optimized  
+                  **Build Workflow**: #${{ github.run_number }}
+
+                  ## 📋 Changelog
+
+                  "
+
+                  # Add categorized sections to release notes
+                  if [ -n "$FEATURES" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### 🚀 Features
+                  ${FEATURES}
+
+                  "
+                  fi
+
+                  if [ -n "$BUG_FIXES" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### 🐛 Bug Fixes
+                  ${BUG_FIXES}
+
+                  "
+                  fi
+
+                  if [ -n "$PERF" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### 🏎️ Performance
+                  ${PERF}
+
+                  "
+                  fi
+
+                  if [ -n "$REFACTOR" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### ♻️ Refactoring
+                  ${REFACTOR}
+
+                  "
+                  fi
+
+                  if [ -n "$DOCS" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### 📝 Documentation
+                  ${DOCS}
+
+                  "
+                  fi
+
+                  if [ -n "$MAINTENANCE" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### 🔧 Maintenance
+                  ${MAINTENANCE}
+
+                  "
+                  fi
+
+                  if [ -n "$OTHERS" ]; then
+                    RELEASE_NOTES="${RELEASE_NOTES}### 🔄 Other Changes
+                  ${OTHERS}
+
+                  "
+                  fi
+
+                  # Export release notes to GitHub output
+                  echo "body<<EOF" >> $GITHUB_OUTPUT
+                  echo -e "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: 🏷️ Push Git tag
+              run: |
+                  TAG_NAME="${{ needs.prepare.outputs.build_version }}"
+                  if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+                    echo "⚠️ Tag $TAG_NAME already exists, skipping creation"
+                  else
+                    echo "🏷️ Creating and pushing tag: $TAG_NAME"
+                    git tag "$TAG_NAME"
+                    git push origin "$TAG_NAME"
+                  fi
+
             - name: 🏷️ Create comprehensive GitHub Release for Palworld Server
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ needs.prepare.outputs.build_version }}-build-${{ github.run_number }}
+                  tag_name: ${{ needs.prepare.outputs.build_version }}
                   name: "Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }} (Build #${{ github.run_number }})"
-                  body: |
-                      # 🚀 Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }}
-
-                      **Build Date**: ${{ env.BUILD_DATE }}  
-                      **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
-                      **Build/Release Version**: ${{ needs.prepare.outputs.build_version_base }}  
-                      **Platform**: ARM64 optimized  
-                      **Build Workflow**: #${{ github.run_number }}
-
-                      ${{ steps.build_changelog.outputs.changelog }}
-
+                  body: ${{ steps.release-notes.outputs.body }}
                   files: /tmp/digests/*/digest.txt
                   draft: false
                   prerelease: false
