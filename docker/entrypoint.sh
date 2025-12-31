@@ -45,9 +45,28 @@ validate_environment() {
 setup_permissions() {
     print_info "Setting up directory permissions..."
     
+    # Handle PUID and PGID
+    if [[ $EUID -eq 0 ]]; then
+        local puid=${PUID:-1000}
+        local pgid=${PGID:-1000}
+        
+        print_info "Ensuring steam user matches PUID:PGID ($puid:$pgid)..."
+        
+        # Modify group first
+        if [[ "$(id -g steam)" != "$pgid" ]]; then
+            groupmod -o -g "$pgid" steam
+        fi
+        
+        # Modify user
+        if [[ "$(id -u steam)" != "$puid" ]]; then
+            usermod -o -u "$puid" steam
+        fi
+    fi
+
     local directories=(
         "/home/steam/palworld_server"
         "/home/steam/backups"
+        "/home/steam/logs"
         "/home/steam/logs/palworld"
         "/home/steam/palworld_server/Pal/Saved"
         "/home/steam/palworld_server/Pal/Saved/Config"
@@ -60,13 +79,15 @@ setup_permissions() {
         fi
         
         if [[ $EUID -eq 0 ]]; then
-            local current_owner=$(stat -c "%u:%g" "$dir" 2>/dev/null || echo "0:0")
-            if [[ "$current_owner" != "steam:steam" ]]; then
-                chown -R "steam:steam" "$dir"
-            fi
+            chown -R steam:steam "$dir"
         fi
     done
     
+    # Ensure home directory permissions
+    if [[ $EUID -eq 0 ]]; then
+        chown steam:steam /home/steam
+    fi
+
     print_success "Directory permissions configured"
 }
 
@@ -145,10 +166,16 @@ run_server() {
     cd /app
     print_info "Starting server with mode: ${1:---start-server}"
     
+    # Prefix commands with gosu if running as root
+    local cmd_prefix=""
+    if [[ $EUID -eq 0 ]]; then
+        cmd_prefix="gosu steam"
+    fi
+
     case "${1:---start-server}" in
         "--start-server")
             print_info "Launching Palworld server manager..."
-            python -m src.server_manager &
+            $cmd_prefix python -m src.server_manager &
             SERVER_PID=$!
             print_success "Server started with PID: $SERVER_PID"
             wait $SERVER_PID
@@ -158,25 +185,29 @@ run_server() {
             ;;
         "--backup-only")
             print_info "Starting backup-only mode..."
-            python -m src.backup.backup_manager &
+            $cmd_prefix python -m src.backup.backup_manager &
             SERVER_PID=$!
             wait $SERVER_PID
             ;;
         "--health-check")
             print_info "Running health check..."
-            exec python /usr/local/bin/healthcheck
+            exec $cmd_prefix python /usr/local/bin/healthcheck
             ;;
         "--shell")
             print_info "Starting interactive shell..."
-            exec /bin/bash
+            if [[ -n "$cmd_prefix" ]]; then
+                exec $cmd_prefix /bin/bash
+            else
+                exec /bin/bash
+            fi
             ;;
         "--supervisor")
             print_info "Starting supervisor mode..."
-            exec supervisord -c /etc/supervisor/conf.d/supervisord.conf
+            exec $cmd_prefix supervisord -c /etc/supervisor/conf.d/supervisord.conf
             ;;
         *)
             print_info "Starting server with custom arguments: $*"
-            python -m src.server_manager "$@" &
+            $cmd_prefix python -m src.server_manager "$@" &
             SERVER_PID=$!
             wait $SERVER_PID
             ;;

@@ -30,6 +30,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     cron \
     supervisor \
     jq \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 RUN DOWNLOAD_URL=$(curl -s https://api.github.com/repos/itzg/rcon-cli/releases/latest | \
@@ -118,7 +119,7 @@ EXPOSE ${SERVER_PORT}/udp \
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=5m \
     CMD /usr/local/bin/healthcheck || exit 1
 
-USER steam
+# Container will start as root to fix permissions and then drop to steam user via gosu
 WORKDIR /home/steam
 
 ENTRYPOINT ["/entrypoint.sh"]
