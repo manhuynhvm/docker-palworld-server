@@ -10,3 +10,7 @@
 venv
 *.pyc
 tests
+.history
+.env
+.serena
+docs
