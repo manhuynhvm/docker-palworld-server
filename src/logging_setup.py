@@ -110,7 +110,7 @@ class CustomConsoleRenderer:
 
         level_colors = {
             "DEBUG": "\033[36m",    # Cyan
-            "INFO": "\033[34m",     # Blue  
+            "INFO": "\033[34m",     # Blue
             "WARNING": "\033[33m",  # Yellow
             "ERROR": "\033[31m",    # Red
             "CRITICAL": "\033[35m", # Magenta
@@ -120,6 +120,33 @@ class CustomConsoleRenderer:
         color = level_colors.get(level, "")
 
         formatted_message = f"{color}[{level}]{reset_color} {event}"
+        
+        # Add additional fields if present in event_dict
+        additional_info = []
+        
+        if "stdout" in event_dict and event_dict["stdout"]:
+            additional_info.append("\n  stdout:")
+            # Add indentation to stdout content
+            stdout_content = str(event_dict["stdout"]).strip()
+            if stdout_content:
+                indented_stdout = "    " + "\n    ".join(stdout_content.split('\n'))
+                additional_info.append(indented_stdout)
+        
+        if "stderr" in event_dict and event_dict["stderr"]:
+            additional_info.append("\n  stderr:")
+            # Add indentation to stderr content
+            stderr_content = str(event_dict["stderr"]).strip()
+            if stderr_content:
+                indented_stderr = "    " + "\n    ".join(stderr_content.split('\n'))
+                additional_info.append(indented_stderr)
+        
+        if "env_vars" in event_dict and isinstance(event_dict["env_vars"], dict):
+            additional_info.append("\n  env_vars:")
+            for key, value in event_dict["env_vars"].items():
+                additional_info.append(f"    {key}: {value}")
+        
+        if additional_info:
+            formatted_message += "".join(additional_info)
         
         return formatted_message
 

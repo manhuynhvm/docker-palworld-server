@@ -54,31 +54,42 @@ class SteamCMDManager:
         log_server_event(self.logger, "steamcmd_start", f"Executing: FEXBash -c '{steamcmd_command}'")
 
         try:
-            env = {
-                **dict(os.environ),
-                "STEAM_COMPAT_DATA_PATH": str(self.steamcmd_path / "steam_compat"),
-                "STEAM_COMPAT_CLIENT_INSTALL_PATH": str(self.steamcmd_path),
-            }
-
-            result = subprocess.run(
-                full_cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
-                cwd=str(self.steamcmd_path)
-            )
-
-            if result.returncode == 0:
-                log_server_event(self.logger, "steamcmd_complete", "SteamCMD commands completed successfully", duration_seconds=timeout)
-                return True
-            else:
-                log_server_event(self.logger, "steamcmd_fail", "SteamCMD commands failed", return_code=result.returncode, stderr=result.stderr)
-                return False
+             env = {
+                 **dict(os.environ),
+                 "STEAM_COMPAT_DATA_PATH": str(self.steamcmd_path / "steam_compat"),
+                 "STEAM_COMPAT_CLIENT_INSTALL_PATH": str(self.steamcmd_path),
+             }
+ 
+             result = subprocess.run(
+                 full_cmd,
+                 capture_output=True,
+                 text=True,
+                 timeout=timeout,
+                 env=env,
+                 cwd=str(self.steamcmd_path)
+             )
+ 
+             if result.returncode == 0:
+                 log_server_event(self.logger, "steamcmd_complete", "SteamCMD commands completed successfully", duration_seconds=timeout)
+                 return True
+             else:
+                 # FEX 관련 환경 변수 추출
+                 fex_env_vars = {k: v for k, v in env.items() if 'FEX' in k or 'STEAM_COMPAT' in k}
+                 
+                 # Log error with ERROR level instead of INFO
+                 self.logger.error(
+                     "SteamCMD commands failed",
+                     event_type="steamcmd_fail",
+                     return_code=result.returncode,
+                     stdout=result.stdout,
+                     stderr=result.stderr,
+                     env_vars=fex_env_vars
+                 )
+                 return False
 
         except subprocess.TimeoutExpired:
-            log_server_event(self.logger, "steamcmd_fail", f"SteamCMD timeout after {timeout} seconds")
+            self.logger.error(f"SteamCMD timeout after {timeout} seconds", event_type="steamcmd_fail")
             return False
         except Exception as e:
-            log_server_event(self.logger, "steamcmd_fail", f"SteamCMD execution error: {e}")
+            self.logger.error(f"SteamCMD execution error: {e}", event_type="steamcmd_fail")
             return False

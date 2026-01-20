@@ -1,0 +1,3 @@
+"""
+Palworld configuration package
+"""

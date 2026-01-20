@@ -15,6 +15,10 @@ from .logging_setup import get_logger, log_server_event, setup_logging
 from .clients import SteamCMDManager
 from .managers import ProcessManager, ConfigManager, IntegrationManager
 from .monitoring import MonitoringManager
+from .managers.lifecycle_manager import ServerLifecycleManager
+from .managers.api_facade import ServerAPIFacade
+from .managers.settings_generator import SettingsGenerator
+from .container import ServiceContainer
 
 
 async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: int = 2) -> bool:
@@ -73,43 +77,38 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
     return False
 
 
-async def verify_server_startup(manager, max_wait_time: int = 30) -> bool:
-    """Verify that the Palworld server process is running and stable"""
-    logger = get_logger("palworld.startup_verification")
-    
-    logger.info("Verifying server process startup...")
-    
-    if not manager.process_manager.is_server_running():
-        logger.error("Server process is not running")
-        return False
-    
-    stability_check_duration = min(10, max_wait_time)
-    logger.info(f"Checking process stability for {stability_check_duration} seconds...")
-    
-    start_time = time.time()
-    while (time.time() - start_time) < stability_check_duration:
-        if not manager.process_manager.is_server_running():
-            logger.error("Server process crashed during stability check")
-            return False
-        await asyncio.sleep(1)
-    
-    logger.info("✅ Server process is running and stable")
-    return True
-
-
 class PalworldServerManager:
     """Main Palworld server orchestrator with enhanced startup verification"""
     
-    def __init__(self, config: Optional[PalworldConfig] = None):
-        """Initialize server manager with specialized components"""
+    def __init__(self, 
+                 config: Optional[PalworldConfig] = None,
+                 container: Optional[ServiceContainer] = None):
+        """Initialize server manager with dependency injection container"""
         self.config = config or get_config()
         self.logger = get_logger("palworld.server")
         
+        # Use provided container or create a new one
+        self.container = container or ServiceContainer()
+        
+        # Register services if not already registered
+        self._setup_container_services()
+        
+        # Resolve dependencies from container
+        self.lifecycle_manager = self.container.resolve(ServerLifecycleManager)
+        self.api_facade = self.container.resolve(ServerAPIFacade)
+        self.settings_generator = self.container.resolve(SettingsGenerator)
+        
+        # Get process manager from lifecycle manager if available, otherwise resolve from container
+        if hasattr(self.lifecycle_manager, 'process_manager'):
+            self.process_manager = self.lifecycle_manager.process_manager
+        else:
+            self.process_manager = self.container.resolve(ProcessManager)
+        
+        # Initialize remaining components that don't have dedicated managers yet
         self.steamcmd_manager = SteamCMDManager(
             self.config.paths.steamcmd_dir, 
             self.logger
         )
-        self.process_manager = ProcessManager(self.config, self.logger)
         self.config_manager = ConfigManager(self.config, self.logger)
         self.integration_manager = IntegrationManager(self.config, self.logger)
         
@@ -122,9 +121,34 @@ class PalworldServerManager:
         self._backup_manager: Optional[Any] = None
         self._startup_completed = False
     
+    def _setup_container_services(self):
+        """Setup default services in the container if not already registered"""
+        if not self.container.has_service(ProcessManager):
+            process_manager = ProcessManager(self.config, self.logger)
+            self.container.register(ProcessManager, process_manager)
+        
+        if not self.container.has_service(ServerLifecycleManager):
+            lifecycle_manager = ServerLifecycleManager(
+                self.config, self.logger
+            )
+            self.container.register(ServerLifecycleManager, lifecycle_manager)
+        
+        if not self.container.has_service(ServerAPIFacade):
+            api_facade = ServerAPIFacade(
+                self.config, self.logger
+            )
+            self.container.register(ServerAPIFacade, api_facade)
+        
+        if not self.container.has_service(SettingsGenerator):
+            settings_generator = SettingsGenerator(
+                self.config, self.logger
+            )
+            self.container.register(SettingsGenerator, settings_generator)
+    
     async def __aenter__(self):
         """Initialize all components"""
         await self.integration_manager.initialize_clients()
+        await self.api_facade.initialize_clients()
         
         self._ensure_directories()
         
@@ -144,6 +168,8 @@ class PalworldServerManager:
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Cleanup all components"""
+        await self.api_facade.cleanup_clients()
+        
         if hasattr(self, 'monitoring_manager'):
             await self.monitoring_manager.stop_monitoring()
         
@@ -170,7 +196,7 @@ class PalworldServerManager:
     
     async def start_server_with_verification(self) -> bool:
         """Start Palworld server and wait for full readiness"""
-        success = self.process_manager.start_server()
+        success = await self.lifecycle_manager.start()
         if not success:
             self.logger.error("Failed to start server process")
             await self.monitoring_manager.handle_error("Failed to start Palworld server")
@@ -178,7 +204,8 @@ class PalworldServerManager:
         
         self.logger.info("Server process started, verifying startup...")
         
-        process_stable = await verify_server_startup(self, max_wait_time=30)
+        # Use the lifecycle manager's verify method
+        process_stable = await self.lifecycle_manager.verify_startup()
         if not process_stable:
             self.logger.error("Server process is not stable")
             await self.monitoring_manager.handle_error("Server process unstable after startup")
@@ -255,67 +282,80 @@ class PalworldServerManager:
     
     def get_server_status(self) -> dict:
         """Get detailed server process status"""
-        return self.process_manager.get_server_status()
+        return self.lifecycle_manager.get_server_status()
     
     def generate_server_settings(self) -> bool:
         """Generate server settings file"""
-        return self.config_manager.generate_server_settings()
+        try:
+            settings_content = self.settings_generator.generate_server_settings()
+            success = self.settings_generator.write_server_settings()
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to generate server settings: {e}")
+            return False
     
     def generate_engine_settings(self) -> bool:
         """Generate engine settings file"""
-        return self.config_manager.generate_engine_settings()
+        try:
+            engine_content = self.settings_generator.generate_engine_settings()
+            success = self.settings_generator.write_engine_settings()
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to generate engine settings: {e}")
+            return False
     
     async def get_server_info_any(self):
         """Get server info using available API"""
-        return await self.integration_manager.get_server_info_any()
+        return await self.api_facade.get_server_info()
     
     async def announce_message_any(self, message: str) -> bool:
         """Announce message using available API"""
-        return await self.integration_manager.announce_message_any(message)
+        return await self.api_facade.announce(message)
     
     async def save_world_any(self) -> bool:
         """Save world using available API"""
-        return await self.integration_manager.save_world_any()
+        return await self.api_facade.save_world()
     
     async def api_get_server_info(self):
         """Get server information via REST API"""
-        return await self.integration_manager.api_get_server_info()
+        return await self.api_facade.get_server_info()
     
     async def api_get_players(self):
         """Get online player list via REST API"""
-        return await self.integration_manager.api_get_players()
+        return await self.api_facade.get_players()
     
     async def api_get_server_settings(self):
         """Get server settings via REST API"""
-        return await self.integration_manager.api_get_server_settings()
+        return await self.api_facade.get_server_settings()
     
     async def api_get_server_metrics(self):
         """Get server metrics via REST API"""
+        # Currently not implemented in the facade, delegate to integration manager
         return await self.integration_manager.api_get_server_metrics()
     
     async def api_announce_message(self, message: str) -> bool:
         """Announce message to all players via REST API"""
-        return await self.integration_manager.api_announce_message(message)
+        return await self.api_facade.announce(message)
     
     async def api_kick_player(self, player_uid: str, message: str = "") -> bool:
         """Kick player from server via REST API"""
-        return await self.integration_manager.api_kick_player(player_uid, message)
+        return await self.api_facade.kick_player(player_uid, message)
     
     async def api_ban_player(self, player_uid: str, message: str = "") -> bool:
         """Ban player from server via REST API"""
-        return await self.integration_manager.api_ban_player(player_uid, message)
+        return await self.api_facade.ban_player(player_uid, message)
     
     async def api_unban_player(self, player_uid: str) -> bool:
         """Unban player from server via REST API"""
-        return await self.integration_manager.api_unban_player(player_uid)
+        return await self.api_facade.unban_player(player_uid)
     
     async def api_save_world(self) -> bool:
         """Save world data via REST API"""
-        return await self.integration_manager.api_save_world()
+        return await self.api_facade.save_world()
     
     async def api_shutdown_server(self, waittime: int = 1, message: str = "Server shutdown") -> bool:
         """Shutdown server gracefully via REST API"""
-        return await self.integration_manager.api_shutdown_server(waittime, message)
+        return await self.api_facade.shutdown_server(waittime, message)
     
     def get_api_manager(self) -> IntegrationManager:
         """Get integration manager for direct API access"""

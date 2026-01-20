@@ -16,10 +16,10 @@ from typing import Optional, List
 
 from ..config_loader import PalworldConfig
 from ..logging_setup import log_server_event
+from ..protocols import IProcessManager
 
 
-
-class ProcessManager:
+class ProcessManager(IProcessManager):
     """Server process lifecycle management"""
     
     def __init__(self, config: PalworldConfig, logger):

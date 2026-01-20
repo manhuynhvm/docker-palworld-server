@@ -1,0 +1,3 @@
+"""
+Integration configuration package
+"""
