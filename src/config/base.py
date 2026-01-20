@@ -53,7 +53,7 @@ class ConfigLoader(IConfigProvider):
     def __init__(self, config_path: Optional[Union[str, Path]] = None):
         """Initialize configuration loader"""
         if config_path is None:
-            current_dir = Path(__file__).parent.parent
+            current_dir = Path(__file__).parent.parent.parent
             config_path = current_dir / "config" / "default.yaml"
         
         self.config_path = Path(config_path)
