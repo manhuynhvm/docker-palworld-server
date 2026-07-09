@@ -109,24 +109,7 @@ class ConfigLoader(IConfigProvider):
     
     def load_config(self):
         """Load configuration file and apply environment variables"""
-        from .palworld.main import PalworldConfig
-        from .server.server import ServerConfig, ServerStartupConfig
-        from .server.rcon import RconConfig
-        from .server.rest_api import RestAPIConfig
-        from .monitoring.monitoring import MonitoringConfig
-        from .monitoring.backup import BackupConfig
-        from .monitoring.idle_restart import IdleRestartConfig
-        from .integration.discord import DiscordConfig
-        from .integration.steamcmd import SteamCMDConfig
-        from .game.gameplay import GameplayConfig
-        from .game.items import ItemsConfig
-        from .game.base_camp import BaseCampConfig
-        from .game.guild import GuildConfig
-        from .game.pal_settings import PalSettingsConfig
-        from .game.building import BuildingConfig
-        from .game.difficulty import DifficultyConfig
-        from .palworld.engine import EngineConfig
-        from .palworld.settings import PalworldSettings
+        
         
         if not self.config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
@@ -161,7 +144,7 @@ class ConfigLoader(IConfigProvider):
         from .game.difficulty import DifficultyConfig
         from .palworld.engine import EngineConfig
         from .palworld.settings import PalworldSettings
-        from .palworld.main import PalworldConfig
+        
         
         config_dict = self._processed_config
         

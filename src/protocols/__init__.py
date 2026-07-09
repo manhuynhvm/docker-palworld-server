@@ -15,7 +15,7 @@ class IProcessManager(Protocol):
         """Check if server is currently running"""
         ...
     
-    def start_server(self) -> bool:
+    async def start_server(self) -> bool:
         """Start Palworld server with dynamic configuration options"""
         ...
     

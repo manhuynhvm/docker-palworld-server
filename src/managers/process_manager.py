@@ -80,7 +80,7 @@ class ProcessManager(IProcessManager):
         
         return ["FEXBash", "-c", command]
     
-    def start_server(self) -> bool:
+    async def start_server(self) -> bool:
         """Start Palworld server with dynamic configuration options"""
         if self.is_server_running():
             log_server_event(self.logger, "server_start", 
@@ -110,7 +110,7 @@ class ProcessManager(IProcessManager):
                 start_new_session=True
             )
             
-            time.sleep(10)
+            await asyncio.sleep(10)
             
             if not self.is_server_running():
                 stdout, stderr = self.server_process.communicate()

@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional, Union
 
 import structlog
 from structlog.types import EventDict, Processor
+from datetime import datetime
 import colorama
 
 
@@ -119,7 +120,8 @@ class CustomConsoleRenderer:
         reset_color = "\033[0m"
         color = level_colors.get(level, "")
 
-        formatted_message = f"{color}[{level}]{reset_color} {event}"
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        formatted_message = f"{color}[{level}]{reset_color} {timestamp} {event}"
         
         # Add additional fields if present in event_dict
         additional_info = []

@@ -5,7 +5,6 @@ Automatic backup scheduling and cleanup system
 """
 
 import asyncio
-import shutil
 import tarfile
 import time
 from datetime import datetime, timedelta

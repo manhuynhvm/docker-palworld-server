@@ -48,10 +48,10 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
                 
                 async with session.get(test_url) as response:
                     if response.status == 200:
-                        logger.info(f"✅ REST API is ready and responding (attempt {attempt}, {elapsed}s elapsed)")
+                        logger.info(f"REST API is ready and responding (attempt {attempt}, {elapsed}s elapsed)")
                         return True
                     elif response.status == 401:
-                        logger.info(f"✅ REST API is responding (attempt {attempt}, {elapsed}s elapsed)")
+                        logger.info(f"REST API is responding (attempt {attempt}, {elapsed}s elapsed)")
                         logger.warning("Authentication issue detected, but API is ready")
                         return True
                     else:
@@ -68,12 +68,12 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
         
         if attempt % (10 // check_interval) == 0:
             remaining = max_wait_time - elapsed
-            logger.info(f"⏳ Still waiting for API... ({elapsed}s elapsed, {remaining}s remaining)")
+            logger.info(f"Still waiting for API... ({elapsed}s elapsed, {remaining}s remaining)")
         
         await asyncio.sleep(check_interval)
     
     total_elapsed = int(time.time() - start_time)
-    logger.error(f"❌ REST API did not become ready within {max_wait_time} seconds (total attempts: {attempt})")
+    logger.error(f"REST API did not become ready within {max_wait_time} seconds (total attempts: {attempt})")
     return False
 
 
@@ -104,18 +104,18 @@ class PalworldServerManager:
         else:
             self.process_manager = self.container.resolve(ProcessManager)
         
-        # Initialize remaining components that don't have dedicated managers yet
+        # Initialize remaining components
         self.steamcmd_manager = SteamCMDManager(
             self.config.paths.steamcmd_dir, 
             self.logger
         )
         self.config_manager = ConfigManager(self.config, self.logger)
-        self.integration_manager = IntegrationManager(self.config, self.logger)
         
+        # Use api_facade as the single API integration point
         self.monitoring_manager = MonitoringManager(
             self.config, 
             self.process_manager, 
-            self.integration_manager
+            self.api_facade
         )
         
         self._backup_manager: Optional[Any] = None
@@ -147,7 +147,6 @@ class PalworldServerManager:
     
     async def __aenter__(self):
         """Initialize all components"""
-        await self.integration_manager.initialize_clients()
         await self.api_facade.initialize_clients()
         
         self._ensure_directories()
@@ -178,8 +177,6 @@ class PalworldServerManager:
         
         if self._backup_manager:
             await self._backup_manager.stop_backup_scheduler()
-        
-        await self.integration_manager.cleanup_clients()
     
     def _ensure_directories(self) -> None:
         """Create necessary directories for server operation"""
@@ -216,15 +213,15 @@ class PalworldServerManager:
             api_ready = await wait_for_api_ready(self, max_wait_time=60, check_interval=2)
             
             if api_ready:
-                self.logger.info("✅ REST API is ready")
+                self.logger.info("REST API is ready")
             else:
-                self.logger.warning("⚠️ REST API not ready within timeout, starting with limited monitoring")
+                self.logger.warning("REST API not ready within timeout, starting with limited monitoring")
                 await self.monitoring_manager.handle_error("REST API failed to become ready within timeout")
         
         self.logger.info("Starting monitoring systems...")
         try:
             await self.monitoring_manager.start_monitoring()
-            self.logger.info("✅ Monitoring systems started successfully")
+            self.logger.info("Monitoring systems started successfully")
         except Exception as e:
             self.logger.error(f"Failed to start monitoring systems: {e}")
             await self.monitoring_manager.handle_error(f"Failed to start monitoring: {str(e)}")
@@ -262,9 +259,9 @@ class PalworldServerManager:
         """Check if server is currently running"""
         return self.process_manager.is_server_running()
     
-    def start_server(self) -> bool:
+    async def start_server(self) -> bool:
         """Start Palworld server"""
-        success = self.process_manager.start_server()
+        success = await self.process_manager.start_server()
         
         if not success:
             asyncio.create_task(
@@ -277,7 +274,7 @@ class PalworldServerManager:
         """Stop Palworld server gracefully"""
         return await self.process_manager.stop_server(
             message, 
-            self.integration_manager.get_api_client()
+            self.api_facade.get_api_client()
         )
     
     def get_server_status(self) -> dict:
@@ -330,8 +327,7 @@ class PalworldServerManager:
     
     async def api_get_server_metrics(self):
         """Get server metrics via REST API"""
-        # Currently not implemented in the facade, delegate to integration manager
-        return await self.integration_manager.api_get_server_metrics()
+        return await self.api_facade.api_get_server_metrics()
     
     async def api_announce_message(self, message: str) -> bool:
         """Announce message to all players via REST API"""
@@ -357,9 +353,9 @@ class PalworldServerManager:
         """Shutdown server gracefully via REST API"""
         return await self.api_facade.shutdown_server(waittime, message)
     
-    def get_api_manager(self) -> IntegrationManager:
-        """Get integration manager for direct API access"""
-        return self.integration_manager
+    def get_api_manager(self) -> ServerAPIFacade:
+        """Get API facade for direct API access"""
+        return self.api_facade
     
     def get_process_manager(self) -> ProcessManager:
         """Get process manager for direct process control"""
@@ -419,58 +415,60 @@ async def main():
         enable_console=True,
         enable_file=True
     )
-    print("🚀 Starting Palworld Dedicated Server")
+    print("Starting Palworld Dedicated Server")
     print(f"   Server: {config.server.name}")
     print(f"   Port: {config.server.port}")
     print(f"   Max Players: {config.server.max_players}")
     
     async with PalworldServerManager(config) as manager:
         if config.steamcmd.update_on_start:
-            print("📥 Downloading/updating server files...")
+            print("Downloading/updating server files...")
             download_success = await manager.download_server_files()
             if not download_success:
-                print("❌ Server file download failed")
+                print("Server file download failed")
                 return 1
         
-        print("⚙️ Generating server settings...")
+        print("Generating server settings...")
         manager.generate_server_settings()
         manager.generate_engine_settings()
         
-        print("🎮 Starting Palworld server...")
+        print("Starting Palworld server...")
         startup_success = await manager.start_server_with_verification()
         
         if startup_success:
-            print("✅ Palworld server started successfully!")
+            print("Palworld server started successfully!")
             
             status = manager.get_overall_status()
-            print(f"🎯 Monitoring active: {status['monitoring']['monitoring_active']}")
-            print(f"✅ Startup completed: {status['startup_completed']}")
+            print(f"Monitoring active: {status['monitoring']['monitoring_active']}")
+            print(f"Startup completed: {status['startup_completed']}")
             
             try:
-                print("🎯 Server operational. Monitoring in progress...")
+                print("Server operational. Monitoring in progress...")
+                
+                _last_status_time = 0
                 
                 while manager.is_server_running():
                     await asyncio.sleep(60)
                     
                     monitoring_status = manager.get_monitoring_manager().get_monitoring_status()
                     current_players = monitoring_status.get('player_count', 0)
-                    
                     current_time = time.time()
-                    if not hasattr(main, '_last_status_time'):
-                        main._last_status_time = current_time
                     
-                    if (current_time - main._last_status_time) >= 300:
-                        print(f"📊 Server operational - Players: {current_players}")
-                        main._last_status_time = current_time
+                    if _last_status_time == 0:
+                        _last_status_time = current_time
+                    
+                    if (current_time - _last_status_time) >= 300:
+                        print(f"Server operational - Players: {current_players}")
+                        _last_status_time = current_time
                     
             except KeyboardInterrupt:
-                print("🛑 Received shutdown signal...")
+                print("Received shutdown signal...")
                 await manager.stop_server("Server shutdown requested")
         else:
-            print("❌ Failed to start Palworld server")
+            print("Failed to start Palworld server")
             return 1
     
-    print("👋 Palworld server manager stopped")
+    print("Palworld server manager stopped")
     return 0
 
 

@@ -47,7 +47,7 @@ class ServerLifecycleManager:
     
     async def start(self) -> bool:
         """Start Palworld server with verification"""
-        success = self.process_manager.start_server()
+        success = await self.process_manager.start_server()
         if not success:
             self.logger.error("Failed to start server process")
             return False
