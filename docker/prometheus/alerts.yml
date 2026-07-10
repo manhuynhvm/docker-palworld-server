@@ -1,0 +1,57 @@
+groups:
+  - name: palworld_server
+    interval: 30s
+    rules:
+
+      - alert: ServerDown
+        expr: up{job="palworld-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Palworld server {{ $labels.instance }} is down"
+          description: "Server has been unreachable for more than 1 minute."
+
+      - alert: HighPlayerCount
+        expr: palworld_players_online > 25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Server near capacity ({{ $value }}/32 players)"
+          description: "Player count has exceeded 25 for 5 minutes."
+
+      - alert: ServerFull
+        expr: palworld_players_online >= 32
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Server is full ({{ $value }}/32 players)"
+
+      - alert: BackupFailed
+        expr: palworld_backup_success == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup failed"
+          description: "The last backup attempt did not complete successfully."
+
+      - alert: LowDiskSpace
+        expr: (palworld_filesystem_free_bytes / palworld_filesystem_total_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space ({{ $value | humanizePercentage }} free)"
+          description: "Available disk space is below 10%."
+
+      - alert: ServerIdle
+        expr: palworld_players_online == 0
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "Server idle — no players for 30 minutes"
+          description: "Auto-pause may engage if configured."
