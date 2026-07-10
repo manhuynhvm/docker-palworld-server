@@ -119,3 +119,8 @@ class PalworldSettings:
     
     ServerReplicatePawnCullDistance: float = 15000.0
     ItemContainerForceMarkDirtyInterval: float = 1.0
+
+    # New settings (PalWorld v0.24+)
+    bAllowClientMod: bool = True
+    bEnableFastTravelOnlyBaseCamp: bool = False
+    PhysicsActiveDropItemMaxNum: int = -1

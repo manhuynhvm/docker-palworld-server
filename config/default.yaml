@@ -140,6 +140,10 @@ palworld_settings:
     ItemContainerForceMarkDirtyInterval: ${ITEM_CONTAINER_FORCE_MARK_DIRTY_INTERVAL:1.0}
     ServerReplicatePawnCullDistance: ${SERVER_REPLICATE_PAWN_CULL_DISTANCE:15000.0}
 
+    bAllowClientMod: ${ALLOW_CLIENT_MOD:true}
+    bEnableFastTravelOnlyBaseCamp: ${ENABLE_FAST_TRAVEL_ONLY_BASE_CAMP:false}
+    PhysicsActiveDropItemMaxNum: ${PHYSICS_ACTIVE_DROP_ITEM_MAX_NUM:-1}
+
 monitoring:
     mode: "${MONITORING_MODE:logs}"
     log_level: "${LOG_LEVEL:INFO}"

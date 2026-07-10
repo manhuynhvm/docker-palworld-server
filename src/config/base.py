@@ -451,6 +451,10 @@ class ConfigLoader(IConfigProvider):
             
             ServerReplicatePawnCullDistance=palworld_settings_dict.get('ServerReplicatePawnCullDistance', 15000.0),
             ItemContainerForceMarkDirtyInterval=palworld_settings_dict.get('ItemContainerForceMarkDirtyInterval', 1.0),
+
+            bAllowClientMod=palworld_settings_dict.get('bAllowClientMod', True),
+            bEnableFastTravelOnlyBaseCamp=palworld_settings_dict.get('bEnableFastTravelOnlyBaseCamp', False),
+            PhysicsActiveDropItemMaxNum=palworld_settings_dict.get('PhysicsActiveDropItemMaxNum', -1),
         )
 
         language = config_dict.get('language', 'ko')
