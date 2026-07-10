@@ -55,9 +55,9 @@ spec:
               value: {{ .Values.server.port | quote }}
             - name: SERVER_DESCRIPTION
               value: {{ .Values.server.description | quote }}
-            - name: RESTAPI_ENABLED
+            - name: REST_API_ENABLED
               value: {{ .Values.restApi.enabled | quote }}
-            - name: RESTAPI_PORT
+            - name: REST_API_PORT
               value: {{ .Values.restApi.port | quote }}
             - name: RCON_ENABLED
               value: {{ .Values.rcon.enabled | quote }}

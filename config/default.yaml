@@ -9,9 +9,9 @@ server:
     description: "${SERVER_DESCRIPTION:A Palworld dedicated server}"
 
 rest_api:
-    enabled: ${RESTAPI_ENABLED:true}
-    port: ${RESTAPI_PORT:8212}
-    host: ${RESTAPI_HOST:localhost}
+    enabled: ${REST_API_ENABLED:true}
+    port: ${REST_API_PORT:8212}
+    host: ${REST_API_HOST:localhost}
 
 rcon:
     enabled: ${RCON_ENABLED:true}
@@ -40,8 +40,8 @@ palworld_settings:
 
     RCONEnabled: ${RCON_ENABLED:true}
     RCONPort: ${RCON_PORT:25575}
-    RESTAPIEnabled: ${RESTAPI_ENABLED:true}
-    RESTAPIPort: ${RESTAPI_PORT:8212}
+    RESTAPIEnabled: ${REST_API_ENABLED:true}
+    RESTAPIPort: ${REST_API_PORT:8212}
 
     BanListURL: "${BAN_LIST_URL:https://api.palworldgame.com/api/banlist.txt}"
     Region: "${REGION:}"

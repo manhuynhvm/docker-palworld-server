@@ -100,7 +100,7 @@ volumes:
 | `EXP_RATE`            | `1.0`   | 📈 Experience gain rate      |
 | `PAL_CAPTURE_RATE`    | `1.0`   | 🎯 Pal capture difficulty    |
 
-[📄 **Complete Environment Variables List**](https://github.com/supersunho/docker-palworld-server/blob/main/.env.sample)
+[📄 **Complete Environment Variables List**](https://github.com/supersunho/docker-palworld-server/blob/main/.env.example)
 
 ## 🎯 ARM64 Performance Revolution
 
