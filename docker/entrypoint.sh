@@ -203,7 +203,7 @@ run_server() {
             ;;
         "--supervisor")
             print_info "Starting supervisor mode..."
-            exec $cmd_prefix supervisord -c /etc/supervisor/conf.d/supervisord.conf
+            exec $cmd_prefix supervisord -c /etc/supervisor/conf.d/palworld.conf
             ;;
         *)
             print_info "Starting server with custom arguments: $*"
