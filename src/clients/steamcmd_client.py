@@ -46,22 +46,29 @@ class SteamCMDManager:
     def _ensure_updated(self) -> bool:
         """Run a lightweight steamcmd session to trigger any pending self-update.
 
-        steamcmd.sh frequently detects an older version on first run, downloads
-        an update, and restarts itself. This restart loses the original command
-        context, causing a "Missing configuration" error for app_update.
-        Running +quit here handles the update cycle before the real command runs.
+        Under FEX emulation, steamcmd.sh often fails with "Missing configuration"
+        on the first real command because the Steam runtime has not been fully
+        initialized. Running +login anonymous +quit here forces SteamCMD to:
+        1. Detect and apply any pending self-update
+        2. Fully initialize the Steam client library and create config files
+        3. Complete the Steam authentication handshake
         """
         if not self.validate_steamcmd():
             return False
 
-        quit_cmd = [str(self.steamcmd_script), "+quit"]
-        full_cmd = ["FEXBash", "-c", " ".join(quit_cmd)]
+        warmup_cmd = [
+            str(self.steamcmd_script),
+            "+login", "anonymous",
+            "+quit"
+        ]
+        full_cmd = ["FEXBash", "-c", " ".join(warmup_cmd)]
 
         env = {
             **dict(os.environ),
             "STEAM_COMPAT_DATA_PATH": str(self.steamcmd_path / "steam_compat"),
             "STEAM_COMPAT_CLIENT_INSTALL_PATH": str(self.steamcmd_path),
         }
+        (self.steamcmd_path / "steam_compat").mkdir(parents=True, exist_ok=True)
 
         self.logger.info("Running SteamCMD warm-up to trigger any pending self-update",
                         event_type="steamcmd_warmup")
