@@ -325,7 +325,7 @@ jobs:
 
             - name: 📤 Upload digest artifact
               if: steps.check-images.outputs.build_image == 'true'
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: digests-arm64
                   path: /tmp/digests/arm64/digest.txt
