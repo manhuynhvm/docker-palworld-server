@@ -1,0 +1,17 @@
+apiVersion: v2
+name: palworld-server
+description: Palworld Dedicated Server with FEX emulation for ARM64
+type: application
+version: 1.1.1
+appVersion: "1.1.1"
+home: https://github.com/supersunho/docker-palworld-server
+sources:
+  - https://github.com/supersunho/docker-palworld-server
+keywords:
+  - palworld
+  - game-server
+  - arm64
+  - fex
+maintainers:
+  - name: supersunho
+    email: supersunho@example.com

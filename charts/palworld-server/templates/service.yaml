@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "palworld-server.fullname" . }}
+  labels:
+    app: {{ include "palworld-server.name" . }}
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.gamePort }}
+      targetPort: game
+      protocol: UDP
+      name: game
+    - port: {{ .Values.service.queryPort }}
+      targetPort: query
+      protocol: UDP
+      name: query
+    - port: {{ .Values.service.restApiPort }}
+      targetPort: rest-api
+      protocol: TCP
+      name: rest-api
+    {{- if .Values.rcon.enabled }}
+    - port: {{ .Values.service.rconPort }}
+      targetPort: rcon
+      protocol: TCP
+      name: rcon
+    {{- end }}
+  selector:
+    app: {{ include "palworld-server.name" . }}
+    release: {{ .Release.Name }}

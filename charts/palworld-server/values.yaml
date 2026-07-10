@@ -1,0 +1,99 @@
+# Palworld Server Helm Chart Values
+# This is a YAML-formatted file.
+
+# Number of replicas (only 1 supported for game server)
+replicaCount: 1
+
+image:
+  repository: supersunho/palworld-server
+  tag: latest
+  pullPolicy: Always
+
+# Server configuration
+server:
+  name: "Palworld Server"
+  password: ""
+  adminPassword: "admin123"
+  maxPlayers: 32
+  port: 8211
+  description: "A Palworld dedicated server"
+  publicPort: 8211
+  publicIp: ""
+
+# REST API configuration
+restApi:
+  enabled: true
+  port: 8212
+
+# RCON configuration
+rcon:
+  enabled: true
+  port: 25575
+
+# Monitoring
+monitoring:
+  mode: "both"
+  metricsPort: 9090
+  dashboardPort: 8080
+  logLevel: "INFO"
+
+# Backup configuration
+backup:
+  enabled: true
+  interval: 3600
+  retentionDays: 7
+
+# Discord notifications (optional)
+discord:
+  enabled: false
+  webhookUrl: ""
+
+# Performance tuning
+performance:
+  useMultiThread: true
+  usePerformanceThreads: true
+  workerThreads: 0
+
+# Resource requests and limits
+resources:
+  requests:
+    memory: "4Gi"
+    cpu: "2"
+  limits:
+    memory: "8Gi"
+    cpu: "4"
+
+# Persistent storage
+persistence:
+  enabled: true
+  size: 20Gi
+  storageClass: ""
+  dataPath: /home/steam/palworld_server/Pal/Saved
+  backupPath: /home/steam/backups
+  logPath: /home/steam/logs
+
+# Service configuration
+service:
+  type: LoadBalancer
+  gamePort: 8211
+  queryPort: 27015
+  restApiPort: 8212
+  rconPort: 25575
+
+# Node selector (ARM64)
+nodeSelector:
+  kubernetes.io/arch: arm64
+
+# Environment variables (additional)
+extraEnv: []
+#  - name: EXAMPLE_VAR
+#    value: "example"
+
+# Pod annotations
+podAnnotations: {}
+
+# Security context
+securityContext:
+  runAsUser: 1002
+  runAsGroup: 1002
+  fsGroup: 1002

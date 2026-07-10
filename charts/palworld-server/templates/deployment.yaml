@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "palworld-server.fullname" . }}
+  labels:
+    app: {{ include "palworld-server.name" . }}
+    chart: {{ include "palworld-server.chart" . }}
+    release: {{ .Release.Name }}
+spec:
+  serviceName: {{ include "palworld-server.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "palworld-server.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "palworld-server.name" . }}
+        release: {{ .Release.Name }}
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: palworld-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.server.port }}
+              protocol: UDP
+              name: game
+            - containerPort: 27015
+              protocol: UDP
+              name: query
+            - containerPort: {{ .Values.restApi.port }}
+              protocol: TCP
+              name: rest-api
+            - containerPort: {{ .Values.rcon.port }}
+              protocol: TCP
+              name: rcon
+          env:
+            - name: SERVER_NAME
+              value: {{ .Values.server.name | quote }}
+            - name: SERVER_PASSWORD
+              value: {{ .Values.server.password | quote }}
+            - name: ADMIN_PASSWORD
+              value: {{ .Values.server.adminPassword | quote }}
+            - name: MAX_PLAYERS
+              value: {{ .Values.server.maxPlayers | quote }}
+            - name: SERVER_PORT
+              value: {{ .Values.server.port | quote }}
+            - name: SERVER_DESCRIPTION
+              value: {{ .Values.server.description | quote }}
+            - name: RESTAPI_ENABLED
+              value: {{ .Values.restApi.enabled | quote }}
+            - name: RESTAPI_PORT
+              value: {{ .Values.restApi.port | quote }}
+            - name: RCON_ENABLED
+              value: {{ .Values.rcon.enabled | quote }}
+            - name: RCON_PORT
+              value: {{ .Values.rcon.port | quote }}
+            - name: MONITORING_MODE
+              value: {{ .Values.monitoring.mode }}
+            - name: LOG_LEVEL
+              value: {{ .Values.monitoring.logLevel }}
+            - name: BACKUP_ENABLED
+              value: {{ .Values.backup.enabled | quote }}
+            - name: BACKUP_INTERVAL
+              value: {{ .Values.backup.interval | quote }}
+            - name: BACKUP_RETENTION_DAYS
+              value: {{ .Values.backup.retentionDays | quote }}
+            - name: DISCORD_ENABLED
+              value: {{ .Values.discord.enabled | quote }}
+            - name: DISCORD_WEBHOOK_URL
+              value: {{ .Values.discord.webhookUrl | quote }}
+            - name: USE_MULTITHREAD_FOR_DS
+              value: {{ .Values.performance.useMultiThread | quote }}
+            - name: USE_PERFORMANCE_THREADS
+              value: {{ .Values.performance.usePerformanceThreads | quote }}
+            {{- if .Values.performance.workerThreads }}
+            - name: WORKER_THREADS_COUNT
+              value: {{ .Values.performance.workerThreads | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.dataPath }}
+            - name: backups
+              mountPath: {{ .Values.persistence.backupPath }}
+            - name: logs
+              mountPath: {{ .Values.persistence.logPath }}
+          livenessProbe:
+            exec:
+              command:
+                - /usr/local/bin/healthcheck
+            initialDelaySeconds: 300
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /usr/local/bin/healthcheck
+                - --json
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "palworld-server.fullname" . }}-data
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "palworld-server.fullname" . }}-backups
+        - name: logs
+          persistentVolumeClaim:
+            claimName: {{ include "palworld-server.fullname" . }}-logs
