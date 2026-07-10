@@ -120,7 +120,58 @@ class PalworldSettings:
     ServerReplicatePawnCullDistance: float = 15000.0
     ItemContainerForceMarkDirtyInterval: float = 1.0
 
-    # New settings (PalWorld v0.24+)
+    # New settings 
     bAllowClientMod: bool = True
     bEnableFastTravelOnlyBaseCamp: bool = False
     PhysicsActiveDropItemMaxNum: int = -1
+
+    # Server management
+    bEnableBuildingPlayerUIdDisplay: bool = False
+    bIsShowJoinLeftMessage: bool = True
+
+    # Features - Stat allocation
+    bAllowEnhanceStat_Attack: bool = True
+    bAllowEnhanceStat_Health: bool = True
+    bAllowEnhanceStat_Stamina: bool = True
+    bAllowEnhanceStat_Weight: bool = True
+    bAllowEnhanceStat_WorkSpeed: bool = True
+
+    # Features - PvP map display
+    bDisplayPvPItemNumOnWorldMap_BaseCamp: bool = False
+    bDisplayPvPItemNumOnWorldMap_Player: bool = False
+
+    # Features - Voice chat
+    bEnableVoiceChat: bool = False
+    VoiceChatMaxVolumeDistance: float = 3000.0
+    VoiceChatZeroVolumeDistance: float = 15000.0
+
+    # Game balances - PvP additional drops
+    bAdditionalDropItemWhenPlayerKillingInPvPMode: bool = False
+    AdditionalDropItemWhenPlayerKillingInPvPMode: str = "PlayerDropItem"
+    AdditionalDropItemNumWhenPlayerKillingInPvPMode: int = 1
+
+    # Game balances - Respawn penalties
+    BlockRespawnTime: float = 5.0
+    RespawnPenaltyDurationThreshold: float = 0.0
+    RespawnPenaltyTimeScale: float = 2.0
+
+    # Game balances - Guild
+    GuildRejoinCooldownMinutes: float = 0
+
+    # Game balances - Other
+    DenyTechnologyList: str = ""
+    ItemCorruptionMultiplier: float = 1.0
+    MonsterFarmActionSpeedRate: float = 1.0
+
+    # v1.0.0 - Player data storage
+    PlayerDataPalStorageUpdateCheckTickInterval: float = 1.0
+
+    # v1.0.0 - Guild auto-transfer
+    AutoTransferMasterCheckIntervalSeconds: float = 3600.0
+    AutoTransferMasterThresholdDays: int = 14
+
+    # v1.0.0 - Guild processing
+    MaxGuildsPerFrame: int = 10
+
+    # v1.0.0 - Building name display cache
+    BuildingNameDisplayCacheTTLSeconds: int = 60

@@ -144,6 +144,49 @@ palworld_settings:
     bEnableFastTravelOnlyBaseCamp: ${ENABLE_FAST_TRAVEL_ONLY_BASE_CAMP:false}
     PhysicsActiveDropItemMaxNum: ${PHYSICS_ACTIVE_DROP_ITEM_MAX_NUM:-1}
 
+    # Server management
+    bEnableBuildingPlayerUIdDisplay: ${ENABLE_BUILDING_PLAYER_UID_DISPLAY:false}
+    bIsShowJoinLeftMessage: ${SHOW_JOIN_LEFT_MESSAGE:true}
+
+    # Stat allocation
+    bAllowEnhanceStat_Attack: ${ALLOW_ENHANCE_STAT_ATTACK:true}
+    bAllowEnhanceStat_Health: ${ALLOW_ENHANCE_STAT_HEALTH:true}
+    bAllowEnhanceStat_Stamina: ${ALLOW_ENHANCE_STAT_STAMINA:true}
+    bAllowEnhanceStat_Weight: ${ALLOW_ENHANCE_STAT_WEIGHT:true}
+    bAllowEnhanceStat_WorkSpeed: ${ALLOW_ENHANCE_STAT_WORK_SPEED:true}
+
+    # PvP map display
+    bDisplayPvPItemNumOnWorldMap_BaseCamp: ${DISPLAY_PVP_ITEM_ON_MAP_BASE_CAMP:false}
+    bDisplayPvPItemNumOnWorldMap_Player: ${DISPLAY_PVP_ITEM_ON_MAP_PLAYER:false}
+
+    # Voice chat
+    bEnableVoiceChat: ${ENABLE_VOICE_CHAT:false}
+    VoiceChatMaxVolumeDistance: ${VOICE_CHAT_MAX_DISTANCE:3000}
+    VoiceChatZeroVolumeDistance: ${VOICE_CHAT_ZERO_DISTANCE:15000}
+
+    # PvP additional drops
+    bAdditionalDropItemWhenPlayerKillingInPvPMode: ${ENABLE_ADDITIONAL_PVP_DROP_ITEM:false}
+    AdditionalDropItemWhenPlayerKillingInPvPMode: ${ADDITIONAL_PVP_DROP_ITEM_ID:PlayerDropItem}
+    AdditionalDropItemNumWhenPlayerKillingInPvPMode: ${ADDITIONAL_PVP_DROP_ITEM_NUM:1}
+
+    # Respawn penalties
+    BlockRespawnTime: ${BLOCK_RESPAWN_TIME:5}
+    RespawnPenaltyDurationThreshold: ${RESPAWN_PENALTY_DURATION_THRESHOLD:0}
+    RespawnPenaltyTimeScale: ${RESPAWN_PENALTY_TIME_SCALE:2.0}
+
+    # Guild
+    GuildRejoinCooldownMinutes: ${GUILD_REJOIN_COOLDOWN_MINUTES:0}
+
+    # Other game balances
+    DenyTechnologyList: ${DENY_TECHNOLOGY_LIST:""}
+    ItemCorruptionMultiplier: ${ITEM_CORRUPTION_MULTIPLIER:1.0}
+    MonsterFarmActionSpeedRate: ${MONSTER_FARM_ACTION_SPEED_RATE:1.0}
+    PlayerDataPalStorageUpdateCheckTickInterval: ${PLAYER_DATA_STORAGE_UPDATE_CHECK_INTERVAL:1.0}
+    AutoTransferMasterCheckIntervalSeconds: ${AUTO_TRANSFER_MASTER_CHECK_INTERVAL:3600}
+    AutoTransferMasterThresholdDays: ${AUTO_TRANSFER_MASTER_THRESHOLD_DAYS:14}
+    MaxGuildsPerFrame: ${MAX_GUILDS_PER_FRAME:10}
+    BuildingNameDisplayCacheTTLSeconds: ${BUILDING_NAME_DISPLAY_CACHE_TTL:60}
+
 monitoring:
     mode: "${MONITORING_MODE:logs}"
     log_level: "${LOG_LEVEL:INFO}"
