@@ -35,10 +35,11 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
     start_time = time.time()
     attempt = 0
     
-    auth = aiohttp.BasicAuth("admin", admin_password)
+    _auth_header = aiohttp.encode_basic_auth("admin", admin_password)
+    _headers = {"Authorization": _auth_header} if _auth_header else {}
     timeout = aiohttp.ClientTimeout(total=5)
     
-    async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
+    async with aiohttp.ClientSession(headers=_headers, timeout=timeout) as session:
         while (time.time() - start_time) < max_wait_time:
             attempt += 1
             elapsed = int(time.time() - start_time)

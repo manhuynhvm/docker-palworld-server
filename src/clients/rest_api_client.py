@@ -26,7 +26,13 @@ class RestAPIClient:
     
     async def __aenter__(self):
         """Initialize HTTP session with authentication"""
-        auth = aiohttp.BasicAuth("admin", self.config.server.admin_password)
+        _auth = aiohttp.encode_basic_auth("admin", self.config.server.admin_password)
+        headers = {"Authorization": _auth} if _auth else {}
+        headers.update({
+            "User-Agent": "PalworldServerManager/1.0",
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        })
         timeout = aiohttp.ClientTimeout(
             total=30,
             connect=10,
@@ -40,14 +46,9 @@ class RestAPIClient:
         )
         
         self.session = aiohttp.ClientSession(
-            auth=auth,
+            headers=headers,
             timeout=timeout,
             connector=connector,
-            headers={
-                "User-Agent": "PalworldServerManager/1.0",
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            }
         )
         return self
     

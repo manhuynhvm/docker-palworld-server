@@ -1,0 +1,120 @@
+"""Tests for the backup manager."""
+
+import pytest
+from pathlib import Path
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
+
+from src.backup.backup_manager import EnhancedBackupManager, BackupInfo
+
+
+class TestEnhancedBackupManager:
+    """FS-14.x: Backup manager behavior."""
+
+    @pytest.fixture
+    def manager(self, palworld_config):
+        return EnhancedBackupManager(palworld_config)
+
+    def test_init_creates_backup_dir(self, tmp_path):
+        """FS-14.1: Creates backup directory."""
+        config = MagicMock()
+        config.paths = MagicMock()
+        config.paths.backup_dir = tmp_path / "backups"
+        config.paths.server_dir = tmp_path / "server"
+
+        manager = EnhancedBackupManager(config)
+        assert (tmp_path / "backups").exists()
+
+    def test_backup_info_dataclass(self):
+        """FS-14.4: BackupInfo fields."""
+        import datetime
+        info = BackupInfo(
+            filename="test.tar.gz",
+            filepath=Path("/backups/test.tar.gz"),
+            size_bytes=1024,
+            created_time=datetime.datetime.now(),
+            backup_type="daily"
+        )
+        assert info.filename == "test.tar.gz"
+        assert info.backup_type == "daily"
+
+    def test_determine_backup_type_daily(self, manager):
+        """FS-14.2: Default is daily."""
+        import datetime
+        dt = datetime.datetime(2024, 6, 15, 10, 0)
+        assert manager._determine_backup_type(dt) == "daily"
+
+    def test_determine_backup_type_weekly(self, manager):
+        """FS-14.2: Sunday 3am is weekly."""
+        import datetime
+        # Sunday = weekday 6
+        dt = datetime.datetime(2024, 6, 16, 3, 0)
+        assert manager._determine_backup_type(dt) == "weekly"
+
+    def test_determine_backup_type_monthly(self, manager):
+        """FS-14.2: 1st 2am is monthly."""
+        import datetime
+        dt = datetime.datetime(2024, 7, 1, 2, 0)
+        assert manager._determine_backup_type(dt) == "monthly"
+
+    def test_backup_disabled_skips_scheduler(self, palworld_config):
+        """FS-14.1: Scheduler won't start when disabled."""
+        palworld_config.backup.enabled = False
+        manager = EnhancedBackupManager(palworld_config)
+        import asyncio
+        asyncio.run(manager.start_backup_scheduler())
+        assert manager._running is False
+
+    @pytest.mark.asyncio
+    async def test_create_backup_source_missing(self, manager, tmp_path):
+        """FS-14.3: Returns error when source missing."""
+        manager.source_dir = tmp_path / "nonexistent" / "source"
+        manager.backup_dir = tmp_path / "backups"
+        manager.backup_dir.mkdir(parents=True, exist_ok=True)
+        result = await manager.create_backup()
+        assert result["success"] is False
+        assert "Source directory does not exist" in result["error"]
+
+    def test_list_backups_empty(self, manager, tmp_path):
+        """FS-14: Empty directory returns empty list."""
+        manager.backup_dir = tmp_path
+        assert manager.list_backups() == []
+
+    def test_list_backups_with_files(self, manager, tmp_path):
+        """FS-14.4: Lists backup files with metadata."""
+        (tmp_path / "daily_auto_20240101_120000.tar.gz").write_text("data")
+        (tmp_path / "manual_backup.tar.gz").write_text("data")
+        manager.backup_dir = tmp_path
+
+        backups = manager.list_backups()
+        assert len(backups) == 2
+
+    def test_cleanup_old_backups(self, manager, tmp_path):
+        """FS-14.4: Retention cleanup."""
+        manager.backup_dir = tmp_path
+        manager.retention_days = 0
+        manager.retention_weeks = 0
+        manager.retention_months = 0
+        manager.max_backups = 0
+
+        (tmp_path / "daily_auto_old.tar.gz").write_text("data")
+        import datetime
+        old_time = datetime.datetime.now() - datetime.timedelta(days=10)
+        mock_info = BackupInfo(
+            filename="daily_auto_old.tar.gz",
+            filepath=tmp_path / "daily_auto_old.tar.gz",
+            size_bytes=100,
+            created_time=old_time,
+            backup_type="daily"
+        )
+        with patch.object(manager, 'list_backups', return_value=[mock_info]):
+            count = manager.cleanup_old_backups()
+            assert count == 1
+            assert not (tmp_path / "daily_auto_old.tar.gz").exists()
+
+    def test_get_backup_statistics(self, manager, tmp_path):
+        """FS-14.8: Statistics summary."""
+        manager.backup_dir = tmp_path
+        stats = manager.get_backup_statistics()
+        assert "total_backups" in stats
+        assert "total_size_bytes" in stats
+        assert "retention_policy" in stats

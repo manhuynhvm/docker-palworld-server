@@ -55,9 +55,10 @@ class HealthChecker:
         component = "rest_api"
         
         try:
-            auth = aiohttp.BasicAuth("admin", self.rcon_password)
+            _auth_h = aiohttp.encode_basic_auth("admin", self.rcon_password)
+            _hdr = {"Authorization": _auth_h} if _auth_h else {}
             
-            async with aiohttp.ClientSession(auth=auth) as session:   
+            async with aiohttp.ClientSession(headers=_hdr) as session:   
                 endpoints = [
                     f'http://{self.rest_api_host}:{self.rest_api_port}/v1/api/info',
                     f'http://{self.rest_api_host}:{self.rest_api_port}/health'

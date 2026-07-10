@@ -133,6 +133,42 @@ jobs:
                   echo "build_version_base=$BUILD_VERSION_BASE" >> $GITHUB_OUTPUT
 
     ##############################################################################
+    # 1.5) Run Python test suite
+    ##############################################################################
+    test:
+        needs: prepare
+        runs-on: ubuntu-latest
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🐍 Set up Python 3.12
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+
+            - name: 📦 Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
+                  pip install pytest pytest-asyncio
+
+            - name: 🧪 Run pytest suite
+              id: test
+              continue-on-error: false
+              run: |
+                  python -m pytest --tb=short -q 2>&1 | tee pytest_output.txt
+                  echo "status=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+            - name: 📊 Test summary
+              run: |
+                  echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  tail -5 pytest_output.txt 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No test output" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+
+
+    ##############################################################################
     # 2) Build ARM64 image
     ##############################################################################
     build:

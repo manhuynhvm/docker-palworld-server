@@ -6,7 +6,7 @@ Event-based notifications with webhook integration and multi-language support
 
 import asyncio
 import aiohttp
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any, Optional
 from enum import Enum
 
@@ -93,7 +93,7 @@ class DiscordNotifier:
             embed = {
                 "description": description,
                 "color": self.level_colors[level],
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(UTC).isoformat()
             }
             
             payload = {"embeds": [embed]}
