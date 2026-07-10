@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
     palworld-server:
-        image: docker.io/library/palworld-server-shk:latest
+        image: supersunho/palworld-server:latest
         container_name: palworld-server
         hostname: palworld-server
         restart: unless-stopped
