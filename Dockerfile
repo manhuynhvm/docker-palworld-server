@@ -18,6 +18,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     pip \
     build-essential \
     libyaml-dev \
+    curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment and install Python dependencies
@@ -26,6 +28,23 @@ COPY requirements.txt ./
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt && \
     /opt/venv/bin/python -c "import yaml, aiohttp, structlog"
+
+# Download rcon-cli in builder stage (avoids curl/wget in runtime)
+RUN DOWNLOAD_URL=$(curl -s https://api.github.com/repos/itzg/rcon-cli/releases/latest | \
+                   jq -r '.assets[] | select(.name | contains("linux_arm64.tar.gz")) | .browser_download_url') && \
+    if [ -z "$DOWNLOAD_URL" ]; then \
+        exit 1; \
+    fi && \
+    curl -L "$DOWNLOAD_URL" -o /tmp/rcon-cli.tar.gz && \
+    cd /tmp && \
+    tar -xzf rcon-cli.tar.gz && \
+    if [ -f rcon-cli ]; then \
+        chmod +x rcon-cli && mv rcon-cli /usr/local/bin/rcon-cli; \
+    else \
+        find . -name "rcon-cli" -type f -exec chmod +x {} \; && \
+        find . -name "rcon-cli" -type f -exec mv {} /usr/local/bin/rcon-cli \; ; \
+    fi && \
+    rm -rf /tmp/rcon-cli* /tmp/LICENSE /tmp/README.md
 
 # ============================================================
 # Stage 2: Runtime — minimal production image
@@ -49,38 +68,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     python3.12-venv \
     python-is-python3 \
     pip \
-    ca-certificates \
     procps \
     htop \
-    curl \
-    wget \
     tar \
     gzip \
     cron \
     supervisor \
     jq \
     gosu \
+    && apt-get purge -y --auto-remove curl wget \
     && rm -rf /var/lib/apt/lists/*
-
-# Install rcon-cli (ARM64)
-RUN DOWNLOAD_URL=$(curl -s https://api.github.com/repos/itzg/rcon-cli/releases/latest | \
-                   jq -r '.assets[] | select(.name | contains("linux_arm64.tar.gz")) | .browser_download_url') && \
-    if [ -z "$DOWNLOAD_URL" ]; then \
-        exit 1; \
-    fi && \
-    curl -L "$DOWNLOAD_URL" -o /tmp/rcon-cli.tar.gz && \
-    cd /tmp && \
-    tar -xzf rcon-cli.tar.gz && \
-    if [ -f rcon-cli ]; then \
-        chmod +x rcon-cli && mv rcon-cli /usr/local/bin/rcon-cli; \
-    else \
-        find . -name "rcon-cli" -type f -exec chmod +x {} \; && \
-        find . -name "rcon-cli" -type f -exec mv {} /usr/local/bin/rcon-cli \; ; \
-    fi && \
-    rm -rf /tmp/rcon-cli* /tmp/LICENSE /tmp/README.md
 
 # Copy Python virtual environment from builder stage
 COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /usr/local/bin/rcon-cli /usr/local/bin/rcon-cli
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
