@@ -1,0 +1,181 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "Palworld Server Dashboard",
+  "uid": "palworld-server",
+  "version": 1,
+  "tags": ["palworld", "game-server"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Server Status",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": 0},
+              {"color": "green", "value": 1}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "pal_server_running",
+          "legendFormat": "Server Running"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Players Online",
+      "type": "stat",
+      "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": 0},
+              {"color": "green", "value": 1}
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "pal_players_online",
+          "legendFormat": "Players"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Server Uptime",
+      "type": "stat",
+      "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": {"mode": "none"}
+        }
+      },
+      "targets": [
+        {
+          "expr": "pal_server_uptime_seconds",
+          "legendFormat": "Uptime"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "CPU Usage",
+      "type": "graph",
+      "gridPos": {"x": 0, "y": 4, "w": 8, "h": 6},
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "pal_cpu_percent",
+          "legendFormat": "CPU %"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Memory Usage",
+      "type": "graph",
+      "gridPos": {"x": 8, "y": 4, "w": 8, "h": 6},
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "pal_memory_percent",
+          "legendFormat": "Memory %"
+        },
+        {
+          "expr": "pal_memory_gb",
+          "legendFormat": "Memory GB"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Disk Usage",
+      "type": "graph",
+      "gridPos": {"x": 0, "y": 10, "w": 8, "h": 6},
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "pal_disk_percent",
+          "legendFormat": "Disk %"
+        },
+        {
+          "expr": "pal_disk_gb",
+          "legendFormat": "Disk GB"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Network Traffic",
+      "type": "graph",
+      "gridPos": {"x": 8, "y": 10, "w": 8, "h": 6},
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(pal_network_bytes_sent[1m])",
+          "legendFormat": "Sent"
+        },
+        {
+          "expr": "rate(pal_network_bytes_recv[1m])",
+          "legendFormat": "Received"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Player History",
+      "type": "graph",
+      "gridPos": {"x": 0, "y": 16, "w": 8, "h": 6},
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "pal_players_online",
+          "legendFormat": "Players"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Event Counters",
+      "type": "graph",
+      "gridPos": {"x": 8, "y": 16, "w": 8, "h": 6},
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(pal_player_joins_total[5m])",
+          "legendFormat": "Joins/min"
+        },
+        {
+          "expr": "rate(pal_player_leaves_total[5m])",
+          "legendFormat": "Leaves/min"
+        },
+        {
+          "expr": "rate(pal_restarts_total[5m])",
+          "legendFormat": "Restarts/min"
+        }
+      ]
+    }
+  ]
+}

@@ -7,20 +7,18 @@ services:
         hostname: palworld-server
         restart: unless-stopped
         env_file: .env
-        # Network configuration
         ports:
-            - "8211:8211/udp" # Game server port
-            - "27015:27015/udp" # Steam query port
-            - "8212:8212/tcp" # REST API port
+            - "8211:8211/udp"    # Game server port
+            - "27015:27015/udp"  # Steam query port
+            - "8212:8212/tcp"    # REST API port
+            - "9090:9090/tcp"    # Prometheus metrics (optional)
 
-        # Volume mounts
         volumes:
-            - ./palworld_data:/home/steam/palworld_server/Pal/Saved # Game save data
-            - ./palworld_backups:/home/steam/backups # Backup storage
-            - ./palworld_logs:/home/steam/logs # Application logs
-            - /etc/localtime:/etc/localtime:ro # Timezone sync
+            - ./palworld_data:/home/steam/palworld_server/Pal/Saved
+            - ./palworld_backups:/home/steam/backups
+            - ./palworld_logs:/home/steam/logs
+            - /etc/localtime:/etc/localtime:ro
 
-        # Health check
         healthcheck:
             test: ["CMD", "/usr/local/bin/healthcheck"]
             interval: 30s
@@ -28,7 +26,6 @@ services:
             retries: 3
             start_period: 5m
 
-        # Resource limits (adjust based on your system)
         deploy:
             resources:
                 limits:
@@ -38,9 +35,44 @@ services:
                     memory: 4G
                     cpus: "2"
 
-        # Logging configuration
         logging:
             driver: "json-file"
             options:
                 max-size: "50m"
                 max-file: "5"
+
+    prometheus:
+        image: prom/prometheus:latest
+        container_name: palworld-prometheus
+        hostname: palworld-prometheus
+        restart: unless-stopped
+        ports:
+            - "9091:9090"  # Prometheus UI (mapped to 9091 to avoid conflict)
+        volumes:
+            - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - ./palworld_prometheus:/prometheus
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=7d'
+        depends_on:
+            - palworld-server
+
+    grafana:
+        image: grafana/grafana:latest
+        container_name: palworld-grafana
+        hostname: palworld-grafana
+        restart: unless-stopped
+        ports:
+            - "3000:3000"  # Grafana UI
+        environment:
+            - GF_SECURITY_ADMIN_USER=admin
+            - GF_SECURITY_ADMIN_PASSWORD=admin
+            - GF_INSTALL_PLUGINS=
+        volumes:
+            - ./docker/grafana/datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+            - ./docker/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/providers.yml:ro
+            - ./docker/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/palworld.json:ro
+            - ./palworld_grafana:/var/lib/grafana
+        depends_on:
+            - prometheus
