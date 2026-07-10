@@ -213,7 +213,7 @@ class HealthManager:
                     async with notifier:
                         if overall_status == "critical":
                             await notifier.notify_error(
-                                "🚨 Server Health Critical",
+                                "Server Health Critical",
                                 f"Server health status: {overall_status}\nImmediate attention required!"
                             )
                         elif overall_status == "unhealthy":

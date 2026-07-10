@@ -79,25 +79,25 @@ class MonitoringManager:
         
         self._monitoring_active = True
         self._shutdown_event.clear()
-        self.logger.info("🚀 Starting comprehensive monitoring system")
+        self.logger.info("Starting comprehensive monitoring system")
         
         try:
             if self.config.discord.enabled:
                 player_task = asyncio.create_task(self.player_monitor.start_monitoring())
                 self._background_tasks.add(player_task)
                 player_task.add_done_callback(self._background_tasks.discard)
-                self.logger.info("👥 Player monitoring started")
+                self.logger.info("Player monitoring started")
             
             server_task = asyncio.create_task(self.server_monitor.start_monitoring())
             self._background_tasks.add(server_task)
             server_task.add_done_callback(self._background_tasks.discard)
-            self.logger.info("🖥️ Server monitoring started")
+            self.logger.info("Server monitoring started")
             
             # Start idle restart monitoring
             idle_restart_task = asyncio.create_task(self.idle_restart_manager.start_monitoring())
             self._background_tasks.add(idle_restart_task)
             idle_restart_task.add_done_callback(self._background_tasks.discard)
-            self.logger.info("⏰ Idle restart monitoring started")
+            self.logger.info("Idle restart monitoring started")
             
         except Exception as e:
             self.logger.error(f"Failed to start monitoring: {e}")
@@ -109,7 +109,7 @@ class MonitoringManager:
         if not self._monitoring_active:
             return
         
-        self.logger.info("🛑 Stopping monitoring system")
+        self.logger.info("Stopping monitoring system")
         self._shutdown_event.set()
         
         # Remove event callbacks to prevent memory leaks
@@ -128,7 +128,7 @@ class MonitoringManager:
             self._background_tasks.clear()
         
         self._monitoring_active = False
-        self.logger.info("✅ Monitoring system stopped")
+        self.logger.info("Monitoring system stopped")
     
     def _cleanup_event_callbacks(self) -> None:
         """Clean up event callbacks to prevent memory leaks"""

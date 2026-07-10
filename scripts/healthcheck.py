@@ -517,18 +517,10 @@ class HealthChecker:
             }, indent=2)
         else:
             overall_status = self.get_overall_status()
-            status_emoji = {
-                HealthStatus.HEALTHY: "✅",
-                HealthStatus.WARNING: "⚠️",
-                HealthStatus.UNHEALTHY: "❌",
-                HealthStatus.CRITICAL: "🚨"
-            }
-            
-            report = f"{status_emoji[overall_status]} Overall Status: {overall_status.value.upper()}\n\n"
+            report = f"Overall Status: {overall_status.value.upper()}\n\n"
             
             for result in self.results:
-                status_text = status_emoji[result.status]
-                report += f"{status_text} {result.component}: {result.message}\n"
+                report += f"{result.component}: {result.message}\n"
                 if result.response_time_ms > 0:
                     report += f"   Response time: {result.response_time_ms:.1f}ms\n"
                 

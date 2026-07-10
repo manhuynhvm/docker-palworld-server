@@ -42,10 +42,65 @@ class SteamCMDManager:
 
         return True
 
+
+    def _ensure_updated(self) -> bool:
+        """Run a lightweight steamcmd session to trigger any pending self-update.
+
+        steamcmd.sh frequently detects an older version on first run, downloads
+        an update, and restarts itself. This restart loses the original command
+        context, causing a "Missing configuration" error for app_update.
+        Running +quit here handles the update cycle before the real command runs.
+        """
+        if not self.validate_steamcmd():
+            return False
+
+        quit_cmd = [str(self.steamcmd_script), "+quit"]
+        full_cmd = ["FEXBash", "-c", " ".join(quit_cmd)]
+
+        env = {
+            **dict(os.environ),
+            "STEAM_COMPAT_DATA_PATH": str(self.steamcmd_path / "steam_compat"),
+            "STEAM_COMPAT_CLIENT_INSTALL_PATH": str(self.steamcmd_path),
+        }
+
+        self.logger.info("Running SteamCMD warm-up to trigger any pending self-update",
+                        event_type="steamcmd_warmup")
+        try:
+            result = subprocess.run(
+                full_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env,
+                cwd=str(self.steamcmd_path),
+            )
+            if result.returncode == 0:
+                self.logger.info("SteamCMD warm-up completed (no update needed or update applied)")
+            else:
+                self.logger.warning(
+                    "SteamCMD warm-up finished with non-zero exit (may be normal)",
+                    event_type="steamcmd_warmup",
+                    return_code=result.returncode,
+                    stdout=result.stdout[-500:],
+                    stderr=result.stderr[-500:],
+                )
+            return True
+        except subprocess.TimeoutExpired:
+            self.logger.warning("SteamCMD warm-up timed out, proceeding anyway")
+            return True
+        except Exception as e:
+            self.logger.warning(f"SteamCMD warm-up failed: {e}, proceeding anyway")
+            return True
+
+
     def run_command(self, commands: List[str], timeout: int = 600) -> bool:
         """Run SteamCMD commands with timeout"""
         if not self.validate_steamcmd():
             return False
+
+        # Warm up steamcmd first to handle any pending self-update
+        # before running the real command.
+        self._ensure_updated()
 
         steamcmd_command = " ".join([str(self.steamcmd_script)] + commands)
 

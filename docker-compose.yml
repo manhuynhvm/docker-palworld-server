@@ -2,16 +2,16 @@ version: "3.8"
 
 services:
     palworld-server:
-        image: supersunho/palworld-server:latest
+        image: docker.io/library/palworld-server-shk:latest
         container_name: palworld-server
         hostname: palworld-server
         restart: unless-stopped
         env_file: .env
         ports:
-            - "8211:8211/udp"    # Game server port
-            - "27015:27015/udp"  # Steam query port
-            - "8212:8212/tcp"    # REST API port
-            - "9090:9090/tcp"    # Prometheus metrics (optional)
+            - "8211:8211/udp" # Game server port
+            - "27015:27015/udp" # Steam query port
+            - "8212:8212/tcp" # REST API port
+            - "9090:9090/tcp" # Prometheus metrics (optional)
 
         volumes:
             - ./palworld_data:/home/steam/palworld_server/Pal/Saved
@@ -47,14 +47,14 @@ services:
         hostname: palworld-prometheus
         restart: unless-stopped
         ports:
-            - "9091:9090"  # Prometheus UI (mapped to 9091 to avoid conflict)
+            - "9091:9090" # Prometheus UI (mapped to 9091 to avoid conflict)
         volumes:
             - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
             - ./palworld_prometheus:/prometheus
         command:
-            - '--config.file=/etc/prometheus/prometheus.yml'
-            - '--storage.tsdb.path=/prometheus'
-            - '--storage.tsdb.retention.time=7d'
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=7d"
         depends_on:
             - palworld-server
 
@@ -64,7 +64,7 @@ services:
         hostname: palworld-grafana
         restart: unless-stopped
         ports:
-            - "3000:3000"  # Grafana UI
+            - "3000:3000" # Grafana UI
         environment:
             - GF_SECURITY_ADMIN_USER=admin
             - GF_SECURITY_ADMIN_PASSWORD=admin

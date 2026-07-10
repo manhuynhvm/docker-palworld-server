@@ -18,41 +18,41 @@ import colorama
 
 
 LEVEL_EMOJIS = {
-    "DEBUG": "🔍",
-    "INFO": "ℹ️",
-    "WARNING": "⚠️",
-    "ERROR": "❌",
-    "CRITICAL": "🚨",
+    "DEBUG": "",
+    "INFO": "",
+    "WARNING": "",
+    "ERROR": "",
+    "CRITICAL": "",
 }
 
 EVENT_EMOJIS = {
-    "server_start": "🚀",
-    "server_stop": "🛑",
-    "server_restart": "🔄",
-    "server_crash": "💥",
-    "player_join": "👤",
-    "player_leave": "👋",
-    "player_kick": "🦵",
-    "player_ban": "🚫",
-    "backup_start": "💾",
-    "backup_complete": "📦",
-    "backup_fail": "💔",
-    "backup_cleanup": "🗑️",
-    "api_call": "📡",
-    "api_success": "✅",
-    "api_fail": "🔴",
-    "metrics": "📊",
-    "health_check": "🩺",
-    "alert": "🔔",
-    "steamcmd_start": "⬇️",
-    "steamcmd_complete": "✅",
-    "steamcmd_fail": "❌",
-    "startup": "🏁",
-    "shutdown": "🔚",
-    "config_load": "⚙️",
-    "discord_send": "💬",
-    "idle_restart_init": "⏰",
-    "rcon_connect": "🖥️",
+    "server_start": "",
+    "server_stop": "",
+    "server_restart": "",
+    "server_crash": "",
+    "player_join": "",
+    "player_leave": "",
+    "player_kick": "",
+    "player_ban": "",
+    "backup_start": "",
+    "backup_complete": "",
+    "backup_fail": "",
+    "backup_cleanup": "",
+    "api_call": "",
+    "api_success": "",
+    "api_fail": "",
+    "metrics": "",
+    "health_check": "",
+    "alert": "",
+    "steamcmd_start": "",
+    "steamcmd_complete": "",
+    "steamcmd_fail": "",
+    "startup": "",
+    "shutdown": "",
+    "config_load": "",
+    "discord_send": "",
+    "idle_restart_init": "",
+    "rcon_connect": "",
 }
 
 
@@ -62,7 +62,7 @@ class EmojiEventProcessor:
     def __call__(self, logger: Any, name: str, event_dict: EventDict) -> EventDict:
         """Add emojis to event dictionary"""
         level = event_dict.get("level", "info").upper()
-        level_emoji = LEVEL_EMOJIS.get(level, "📝")
+        level_emoji = LEVEL_EMOJIS.get(level, "")
         
         event_emoji = ""
         event_type = event_dict.get("event_type")
@@ -76,12 +76,14 @@ class EmojiEventProcessor:
                     break
         
         if event_emoji:
-            emoji_prefix = f"{event_emoji}"
+            emoji_prefix = f"{event_emoji} "
+        elif level_emoji:
+            emoji_prefix = f"{level_emoji} "
         else:
-            emoji_prefix = level_emoji
+            emoji_prefix = ""
         
         original_event = event_dict.get("event", "")
-        event_dict["event"] = f"{emoji_prefix} {original_event}"
+        event_dict["event"] = f"{emoji_prefix}{original_event}"
         
         return event_dict
 

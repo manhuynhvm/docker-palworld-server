@@ -32,15 +32,7 @@ class INIToYAMLConverter:
     def log(self, message: str, level: str = "INFO"):
         """Simple logging function"""
         if self.logger_enabled:
-            level_emoji = {
-                "INFO": "ℹ️",
-                "ERROR": "❌", 
-                "DEBUG": "🔍",
-                "SUCCESS": "✅",
-                "WARNING": "⚠️"
-            }
-            emoji = level_emoji.get(level, "ℹ️")
-            print(f"{emoji} [{level}] {message}", file=sys.stderr)
+            print(f"[{level}] {message}", file=sys.stderr)
     
     def find_default_ini_file(self) -> Optional[Path]:
         """Find DefaultPalWorldSettings.ini in common locations"""

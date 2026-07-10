@@ -33,7 +33,7 @@ async def verify_server_startup(process_manager, max_wait_time: int = 30) -> boo
             return False
         await asyncio.sleep(1)
     
-    logger.info("✅ Server process is running and stable")
+    logger.info("Server process is running and stable")
     return True
 
 
@@ -59,7 +59,7 @@ class ServerLifecycleManager:
             self.logger.error("Server process is not stable")
             return False
         
-        self.logger.info("✅ Server started successfully and is stable")
+        self.logger.info("Server started successfully and is stable")
         return True
     
     async def stop(self, graceful: bool = True, message: str = "Server is shutting down") -> bool:
@@ -118,7 +118,7 @@ class ServerLifecycleManager:
             self.logger.error("Failed to start server after restart")
             return False
         
-        self.logger.info("✅ Server restarted successfully")
+        self.logger.info("Server restarted successfully")
         return True
     
     async def verify_startup(self) -> bool:
