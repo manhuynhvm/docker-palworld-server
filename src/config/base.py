@@ -109,8 +109,6 @@ class ConfigLoader(IConfigProvider):
     
     def load_config(self):
         """Load configuration file and apply environment variables"""
-        
-        
         if not self.config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
         
@@ -127,6 +125,7 @@ class ConfigLoader(IConfigProvider):
     
     def _create_config_instance(self):
         """Create PalworldConfig instance from dictionary"""
+        from .palworld.main import PalworldConfig
         from .server.server import ServerConfig, ServerStartupConfig
         from .server.rcon import RconConfig
         from .server.rest_api import RestAPIConfig

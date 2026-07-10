@@ -35,10 +35,12 @@ class MonitoringManager:
         self._setup_event_callbacks()
     
     def _setup_event_callbacks(self) -> None:
-        """Setup event callbacks for monitoring components"""
-        # Clear all existing callbacks first to avoid duplicates
-        self.player_monitor.clear_event_callbacks()
-        self.server_monitor.clear_event_callbacks()
+        """Setup system event callbacks for monitoring components
+        Note: Only clears system callbacks to preserve externally registered ones.
+        """
+        # Clear only system callbacks to avoid removing externally registered callbacks
+        self.player_monitor.clear_user_callbacks()
+        self.server_monitor.clear_user_callbacks()
         
         # Add system callbacks for player events
         self.player_monitor.add_event_callback(

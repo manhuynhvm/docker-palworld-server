@@ -217,16 +217,11 @@ class HealthManager:
                                 f"Server health status: {overall_status}\nImmediate attention required!"
                             )
                         elif overall_status == "unhealthy":
-                            await notifier.notify_warning(
-                                "⚠️ Server Health Warning",
-                                f"Server health status: {overall_status}\nPlease check server status."
+                            await notifier.notify_error(
+                                f"Server health warning - status: {overall_status}. Please check server status."
                             )
                         elif overall_status == "healthy":
-                            await notifier.notify_server_start(
-                                self.config.server.name,
-                                self.config.server.port,
-                                self.config.server.max_players
-                            )
+                            await notifier.notify_error("Server health restored to healthy")
                             
             except ImportError:
                 pass

@@ -106,10 +106,10 @@ class PlayerMonitor:
         if event_type is None:
             # Clear only user callbacks for all event types
             for et in self._event_callbacks:
-                self._event_callbacks[et] = [cb for cb in self._event_callbacks[et] if cb not in self._system_callbacks[et]]
+                self._event_callbacks[et] = [cb for cb in self._event_callbacks[et] if cb in self._system_callbacks[et]]
         else:
             # Clear only user callbacks for specific event type
-            self._event_callbacks[event_type] = [cb for cb in self._event_callbacks[event_type] if cb not in self._system_callbacks[event_type]]
+            self._event_callbacks[event_type] = [cb for cb in self._event_callbacks[event_type] if cb in self._system_callbacks[event_type]]
         self.logger.info("Cleared only user-added callbacks")
     
     async def start_monitoring(self) -> None:
@@ -143,6 +143,8 @@ class PlayerMonitor:
         
         # Clear previous players to prevent memory accumulation
         self._previous_players.clear()
+
+        self._monitoring_active = False
     
     async def _monitoring_loop(self) -> None:
         """Main monitoring loop"""

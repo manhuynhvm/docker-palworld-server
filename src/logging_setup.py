@@ -9,11 +9,11 @@ import sys
 import logging
 import logging.handlers
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Dict, Optional, Union
 
 import structlog
 from structlog.types import EventDict, Processor
-from datetime import datetime
 import colorama
 
 

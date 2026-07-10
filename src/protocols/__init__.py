@@ -46,11 +46,24 @@ class IConfigProvider(Protocol):
         ...
 
 
+@dataclass
+class ServerInfo:
+    """Server information data class"""
+    name: str = ""
+    players: int = 0
+    max_players: int = 0
+    uptime: str = ""
+    version: str = ""
+    ip: str = ""
+    port: int = 0
+    info: str = ""
+
+
 @runtime_checkable
 class IServerAPI(Protocol):
     """Server API interface"""
     
-    async def get_server_info(self) -> Optional[Dict[str, Any]]:
+    async def get_server_info(self) -> Optional[ServerInfo]:
         """Get server information using available API"""
         ...
     

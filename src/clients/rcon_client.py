@@ -5,6 +5,7 @@ Handles server commands via RCON protocol using rcon-cli binary
 """
 
 import asyncio
+import os
 import time
 from typing import Optional
 
@@ -67,10 +68,12 @@ class RconClient:
             'rcon-cli',
             '--host', self.host,
             '--port', str(self.port),
-            '--password', self.password,
             command
         ]
         cmd.extend(args)
+        
+        env = os.environ.copy()
+        env['RCON_PASSWORD'] = self.password
         
         last_exception = None
         
@@ -81,7 +84,8 @@ class RconClient:
                 process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env
                 )
                 
                 stdout, stderr = await asyncio.wait_for(

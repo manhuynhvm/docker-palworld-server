@@ -243,7 +243,7 @@ class IdleRestartManager:
             
             await asyncio.sleep(5)
             
-            start_success = self.process_manager.start_server()
+            start_success = await self.process_manager.start_server()
             
             if not start_success:
                 self.logger.error("❌ Failed to start server after idle restart")

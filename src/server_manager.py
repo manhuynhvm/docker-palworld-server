@@ -13,7 +13,7 @@ from .config_loader import PalworldConfig, get_config
 from .logging_setup import get_logger, log_server_event, setup_logging
 
 from .clients import SteamCMDManager
-from .managers import ProcessManager, ConfigManager, IntegrationManager
+from .managers import ProcessManager, ConfigManager
 from .monitoring import MonitoringManager
 from .managers.lifecycle_manager import ServerLifecycleManager
 from .managers.api_facade import ServerAPIFacade
@@ -35,15 +35,15 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
     start_time = time.time()
     attempt = 0
     
-    while (time.time() - start_time) < max_wait_time:
-        attempt += 1
-        elapsed = int(time.time() - start_time)
-        
-        try:
-            auth = aiohttp.BasicAuth("admin", admin_password)
-            timeout = aiohttp.ClientTimeout(total=5)
+    auth = aiohttp.BasicAuth("admin", admin_password)
+    timeout = aiohttp.ClientTimeout(total=5)
+    
+    async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
+        while (time.time() - start_time) < max_wait_time:
+            attempt += 1
+            elapsed = int(time.time() - start_time)
             
-            async with aiohttp.ClientSession(auth=auth, timeout=timeout) as session:
+            try:
                 test_url = f"http://{api_host}:{api_port}/v1/api/info"
                 
                 async with session.get(test_url) as response:
@@ -56,21 +56,21 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
                         return True
                     else:
                         logger.debug(f"API responding with status {response.status} (attempt {attempt})")
-                        
-        except aiohttp.ClientConnectorError as e:
-            logger.debug(f"API not ready - connection failed (attempt {attempt}, {elapsed}s): {str(e)[:50]}...")
+                            
+            except aiohttp.ClientConnectorError as e:
+                logger.debug(f"API not ready - connection failed (attempt {attempt}, {elapsed}s): {str(e)[:50]}...")
+                
+            except asyncio.TimeoutError:
+                logger.debug(f"API not ready - timeout (attempt {attempt}, {elapsed}s)")
+                
+            except Exception as e:
+                logger.debug(f"API check error (attempt {attempt}, {elapsed}s): {str(e)[:50]}...")
             
-        except asyncio.TimeoutError:
-            logger.debug(f"API not ready - timeout (attempt {attempt}, {elapsed}s)")
+            if attempt % (10 // check_interval) == 0:
+                remaining = max_wait_time - elapsed
+                logger.info(f"Still waiting for API... ({elapsed}s elapsed, {remaining}s remaining)")
             
-        except Exception as e:
-            logger.debug(f"API check error (attempt {attempt}, {elapsed}s): {str(e)[:50]}...")
-        
-        if attempt % (10 // check_interval) == 0:
-            remaining = max_wait_time - elapsed
-            logger.info(f"Still waiting for API... ({elapsed}s elapsed, {remaining}s remaining)")
-        
-        await asyncio.sleep(check_interval)
+            await asyncio.sleep(check_interval)
     
     total_elapsed = int(time.time() - start_time)
     logger.error(f"REST API did not become ready within {max_wait_time} seconds (total attempts: {attempt})")

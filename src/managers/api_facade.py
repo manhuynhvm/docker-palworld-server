@@ -6,24 +6,11 @@ Single entry point for all server API interactions.
 """
 
 from typing import Optional, Dict, List, Any
-from dataclasses import dataclass
 
 from ..config_loader import PalworldConfig
 from ..clients import RestAPIClient, RconClient
 from ..logging_setup import get_logger
-from ..protocols import IServerAPI
-
-
-@dataclass
-class ServerInfo:
-    """Server information data class"""
-    name: str = ""
-    players: int = 0
-    max_players: int = 0
-    uptime: str = ""
-    version: str = ""
-    ip: str = ""
-    port: int = 0
+from ..protocols import IServerAPI, ServerInfo
 
 
 class ServerAPIFacade(IServerAPI):

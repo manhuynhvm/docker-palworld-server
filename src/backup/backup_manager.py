@@ -68,7 +68,7 @@ class EnhancedBackupManager:
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         
         log_backup_event(
-            self.logger, "scheduler_start",
+            self.logger, "backup_start",
             f"Backup scheduler started (interval: {self.interval_seconds}s, cleanup: {self.cleanup_interval}s)"
         )
     
@@ -90,7 +90,7 @@ class EnhancedBackupManager:
             except asyncio.CancelledError:
                 pass
         
-        log_backup_event(self.logger, "scheduler_stop", "Backup scheduler stopped")
+        log_backup_event(self.logger, "backup_cleanup", "Backup scheduler stopped")
     
     async def _backup_loop(self):
         """Main backup creation loop"""
@@ -107,7 +107,7 @@ class EnhancedBackupManager:
                 
                 if result.get('success'):
                     log_backup_event(
-                        self.logger, "backup_success",
+                        self.logger, "backup_complete",
                         f"{backup_type.capitalize()} backup created successfully",
                         filename=result.get('filename'),
                         size_mb=result.get('size_mb', 0),
