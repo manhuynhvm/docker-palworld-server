@@ -222,6 +222,27 @@ class ProcessManager(IProcessManager):
             log_server_event(self.logger, "config_hot_reload_fail",
                            "Could not send SIGHUP — server not running")
         return result
+
+    async def pause_server(self) -> bool:
+        """Pause the server process by sending SIGSTOP.
+
+        The server binary is frozen in memory (CPU 0%) and can be
+        instantly resumed with SIGCONT.
+
+        Returns:
+            True if SIGSTOP was sent, False otherwise.
+        """
+        return await self.send_signal(signal.SIGSTOP)
+
+    async def resume_server(self) -> bool:
+        """Resume a paused server process by sending SIGCONT.
+
+        Returns:
+            True if SIGCONT was sent, False otherwise.
+        """
+        return await self.send_signal(signal.SIGCONT)
+
+
     
     def get_server_status(self) -> dict:
         """Get detailed server process status"""
