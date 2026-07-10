@@ -441,6 +441,27 @@ async def main():
             status = manager.get_overall_status()
             print(f"Monitoring active: {status['monitoring']['monitoring_active']}")
             print(f"Startup completed: {status['startup_completed']}")
+
+            # Start config file watching for hot-reload
+            config_hot_reload = manager.config.monitoring.mode in ("logs", "prometheus", "both")
+            if config_hot_reload:
+                async def on_config_change():
+                    """Callback when config files have been regenerated.
+                    Attempts to trigger hot-reload via SIGHUP.
+                    """
+                    sent = await manager.process_manager.reload_config()
+                    if sent:
+                        log_server_event(manager.logger, "config_hot_reload",
+                                       "Configuration hot-reloaded via SIGHUP")
+                    else:
+                        log_server_event(manager.logger, "config_hot_reload_fail",
+                                       "Hot-reload queued - will apply on next server restart")
+
+                await manager.config_manager.start_watching(
+                    check_interval=30,
+                    on_change=on_config_change
+                )
+                print("Config hot-reload watcher started (30s polling)")
             
             try:
                 print("Server operational. Monitoring in progress...")

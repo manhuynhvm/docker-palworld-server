@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
 Process management for Palworld server
-Handles server process lifecycle and monitoring
+Handles server process lifecycle, monitoring, and signal delivery.
 """
-
 
 import asyncio
 import os
@@ -12,7 +11,6 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Optional, List
-
 
 from ..config_loader import PalworldConfig
 from ..logging_setup import log_server_event
@@ -182,6 +180,48 @@ class ProcessManager(IProcessManager):
             log_server_event(self.logger, "server_stop_fail", 
                            f"Server stop error: {e}")
             return False
+    
+    async def send_signal(self, sig: int) -> bool:
+        """Send a signal to the server process group.
+        
+        Args:
+            sig: Signal number (e.g., signal.SIGHUP, signal.SIGTERM).
+        
+        Returns:
+            True if signal was sent, False if server is not running.
+        """
+        if not self.is_server_running():
+            self.logger.warning("Cannot send signal — server is not running")
+            return False
+        
+        try:
+            pid = self.server_process.pid
+            os.killpg(pid, sig)
+            sig_name = signal.Signals(sig).name
+            log_server_event(self.logger, "server_signal",
+                           f"Signal {sig_name} sent to process group",
+                           pid=pid, signal=sig_name)
+            return True
+        except ProcessLookupError:
+            self.logger.warning(f"Process group not found (pid={self.server_process.pid})")
+            return False
+        except Exception as e:
+            self.logger.error(f"Failed to send signal: {e}")
+            return False
+    
+    async def reload_config(self) -> bool:
+        """Trigger configuration reload by sending SIGHUP to the server.
+        
+        Returns True if SIGHUP was sent, False otherwise.
+        """
+        result = await self.send_signal(signal.SIGHUP)
+        if result:
+            log_server_event(self.logger, "config_hot_reload",
+                           "SIGHUP sent to server for config reload")
+        else:
+            log_server_event(self.logger, "config_hot_reload_fail",
+                           "Could not send SIGHUP — server not running")
+        return result
     
     def get_server_status(self) -> dict:
         """Get detailed server process status"""
