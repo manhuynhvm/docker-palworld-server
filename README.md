@@ -6,24 +6,24 @@
 
 ### 🔧 **ARM64-Optimized Palworld Server**
 
--   **Revolutionary FEX Integration**: 3-5x faster than QEMU on ARM64
--   **Apple Silicon Ready**: M1/M2/M3 Macs with native performance
--   **Raspberry Pi Support**: Perfect for home servers and edge computing
--   **AWS Graviton Optimized**: Cloud-native ARM64 deployment
+- **Revolutionary FEX Integration**: 3-5x faster than QEMU on ARM64
+- **Apple Silicon Ready**: M1/M2/M3 Macs with native performance
+- **Raspberry Pi Support**: Perfect for home servers and edge computing
+- **AWS Graviton Optimized**: Cloud-native ARM64 deployment
 
 ### 🤖 **Intelligent Auto-Management**
 
--   **🔄 Smart Idle Restart**: Automatically restart when no players for configurable time
--   **📊 Advanced Health Monitoring**: CPU, memory, disk, and API health checks with auto-recovery
--   **💾 Enterprise Backup System**: Daily/weekly/monthly rotation with intelligent cleanup
--   **🎯 Zero-Downtime Updates**: SteamCMD integration with graceful server management
+- **🔄 Smart Idle Restart**: Automatically restart when no players for configurable time
+- **📊 Advanced Health Monitoring**: CPU, memory, disk, and API health checks with auto-recovery
+- **💾 Enterprise Backup System**: Daily/weekly/monthly rotation with intelligent cleanup
+- **🎯 Zero-Downtime Updates**: SteamCMD integration with graceful server management
 
 ### 🌍 **Multi-Language Discord Integration**
 
--   **Real-time Notifications**: Player join/leave, server events, backup completion
--   **4 Languages Supported**: Korean, English, Japanese, Chinese
--   **Smart Event Filtering**: Configurable notification preferences
--   **Rich Embeds**: Beautiful Discord messages with server status
+- **Real-time Notifications**: Player join/leave, server events, backup completion
+- **3 Languages Supported**: Korean, English, Japanese
+- **Smart Event Filtering**: Configurable notification preferences
+- **Rich Embeds**: Beautiful Discord messages with server status
 
 ## 🚀 Quick Start
 
@@ -76,7 +76,7 @@ volumes:
 | :-------------------- | :------------------ | :----------------------------------- |
 | `SERVER_NAME`         | `"Palworld Server"` | 🏷️ Server display name               |
 | `SERVER_PASSWORD`     | `""`                | 🔒 Server join password              |
-| `ADMIN_PASSWORD`      | `"admin123"`        | 👑 Admin/RCON password               |
+| `ADMIN_PASSWORD`      | _(required)_        | 👑 Admin/RCON password (no default)  |
 | `MAX_PLAYERS`         | `32`                | 👥 Maximum player count (1-32)       |
 | `BACKUP_ENABLED`      | `true`              | 💾 Enable automatic backups          |
 | `DISCORD_WEBHOOK_URL` | `""`                | 💬 Discord webhook for notifications |
@@ -134,9 +134,9 @@ IDLE_RESTART_ENABLED=true
 IDLE_RESTART_MINUTES=30
 
 # Discord notification in your language
-🇺🇸 "⏰ No players for 30 minutes. Restarting server (My Server)."
-🇰🇷 "⏰ 30분 동안 접속자가 없어 서버(My Server)를 재시작합니다."
-🇯🇵 "⏰ 30分間プレイヤーがいなかったため、サーバー(My Server)を再起動します。"
+🇺🇸 "No players for 30 minutes. Restarting server (My Server)."
+🇰🇷 "30분 동안 접속자가 없어 서버(My Server)를 재시작합니다."
+🇯🇵 "30分間プレイヤーがいなかったため、サーバー(My Server)を再起動します。"
 ```
 
 ### **💾 Enterprise Backup System**
@@ -161,8 +161,8 @@ curl http://localhost:8212/v1/api/players
 curl http://localhost:8212/v1/api/settings
 
 # RCON commands
-rcon-cli --host localhost --port 25575 --password admin123 ShowPlayers
-rcon-cli --host localhost --port 25575 --password admin123 "Broadcast Hello!"
+rcon-cli --host localhost --port 25575 --password ${ADMIN_PASSWORD} ShowPlayers
+rcon-cli --host localhost --port 25575 --password ${ADMIN_PASSWORD} "Broadcast Hello!"
 ```
 
 ### **🩺 Health Monitoring**
@@ -215,22 +215,22 @@ docker run -it --rm \
 
 ### **Supported Languages**
 
--   🇰🇷 **Korean** (`ko`) - 한국어 알림
--   🇺🇸 **English** (`en`) - English notifications
--   🇯🇵 **Japanese** (`ja`) - 日本語通知
+- 🇰🇷 **Korean** (`ko`) - 한국어 알림
+- 🇺🇸 **English** (`en`) - English notifications
+- 🇯🇵 **Japanese** (`ja`) - 日本語通知
 
 ### **Example Notifications**
 
 ```yaml
 Player Join:
-🇺🇸 "🎮 Player joined: Steve (5 players online)"
-🇰🇷 "🎮 플레이어 참가: Steve (현재 5명)"
-🇯🇵 "🎮 プレイヤー参加: Steve (現在5人)"
+🇺🇸 "Player joined: Steve (5 players online)"
+🇰🇷 "플레이어 참가: Steve (현재 5명)"
+🇯🇵 "プレイヤー参加: Steve (現在5人)"
 
 Server Restart:
-🇺🇸 "🔄 Server restarted due to idle timeout"
-🇰🇷 "🔄 무접속으로 인한 서버 재시작"
-🇯🇵 "🔄 アイドルタイムアウトによるサーバー再起動"
+🇺🇸 "Server restarted due to idle timeout"
+🇰🇷 "무접속으로 인한 서버 재시작"
+🇯🇵 "アイドルタイムアウトによるサーバー再起動"
 ```
 
 ## 📈 Resource Requirements \& Scaling
@@ -248,19 +248,19 @@ Server Restart:
 
 #### **ARM64 Cloud Options** 💚
 
--   **AWS**: Graviton3/4 instances (c7g, m7g series)
--   **Oracle Cloud**: Ampere A1 (4 cores, 24GB RAM - Always Free!)
--   **Hetzner**: CAX series ARM64 VPS
--   **Scaleway**: ARM64 instances
+- **AWS**: Graviton3/4 instances (c7g, m7g series)
+- **Oracle Cloud**: Ampere A1 (4 cores, 24GB RAM - Always Free!)
+- **Hetzner**: CAX series ARM64 VPS
+- **Scaleway**: ARM64 instances
 
 ## 🤝 Community \& Support
 
 ### **🔗 Links**
 
--   📦 **Docker Hub**: [supersunho/palworld-server](https://hub.docker.com/r/supersunho/palworld-server)
--   📂 **GitHub**: [supersunho/docker-palworld-server](https://github.com/supersunho/docker-palworld-server)
--   🐛 **Issues**: [Report Issues](https://github.com/supersunho/docker-palworld-server/issues)
--   💬 **Discussions**: [Community Discussions](https://github.com/supersunho/docker-palworld-server/discussions)
+- 📦 **Docker Hub**: [supersunho/palworld-server](https://hub.docker.com/r/supersunho/palworld-server)
+- 📂 **GitHub**: [supersunho/docker-palworld-server](https://github.com/supersunho/docker-palworld-server)
+- 🐛 **Issues**: [Report Issues](https://github.com/supersunho/docker-palworld-server/issues)
+- 💬 **Discussions**: [Community Discussions](https://github.com/supersunho/docker-palworld-server/discussions)
 
 ## 📜 License \& Acknowledgments
 

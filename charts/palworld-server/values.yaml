@@ -13,7 +13,7 @@ image:
 server:
   name: "Palworld Server"
   password: ""
-  adminPassword: "admin123"
+  adminPassword: "changeme"
   maxPlayers: 32
   port: 8211
   description: "A Palworld dedicated server"

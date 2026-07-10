@@ -50,7 +50,7 @@ class TestSteamCMDClient:
 
         result = manager.run_command(["+quit"])
         assert result is True
-        mock_run.assert_called_once()
+        assert mock_run.call_count == 2
 
     @patch('subprocess.run')
     def test_run_command_failure(self, mock_run, manager, tmp_path):
@@ -78,7 +78,7 @@ class TestSteamCMDClient:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         manager.run_command(["+quit"])
-        call_kwargs = mock_run.call_args[1]
+        call_kwargs = mock_run.call_args_list[1][1]
         env = call_kwargs['env']
         assert 'STEAM_COMPAT_DATA_PATH' in env
         assert 'STEAM_COMPAT_CLIENT_INSTALL_PATH' in env

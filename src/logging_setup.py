@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-structlog + emoji logging system setup
+Structured logging system setup
 Efficient logging implementation for Palworld server management
 """
 
@@ -16,78 +16,6 @@ import structlog
 from structlog.types import EventDict, Processor
 import colorama
 
-
-LEVEL_EMOJIS = {
-    "DEBUG": "",
-    "INFO": "",
-    "WARNING": "",
-    "ERROR": "",
-    "CRITICAL": "",
-}
-
-EVENT_EMOJIS = {
-    "server_start": "",
-    "server_stop": "",
-    "server_restart": "",
-    "server_crash": "",
-    "player_join": "",
-    "player_leave": "",
-    "player_kick": "",
-    "player_ban": "",
-    "backup_start": "",
-    "backup_complete": "",
-    "backup_fail": "",
-    "backup_cleanup": "",
-    "api_call": "",
-    "api_success": "",
-    "api_fail": "",
-    "metrics": "",
-    "health_check": "",
-    "alert": "",
-    "steamcmd_start": "",
-    "steamcmd_complete": "",
-    "steamcmd_fail": "",
-    "startup": "",
-    "shutdown": "",
-    "config_load": "",
-    "discord_send": "",
-    "idle_restart_init": "",
-    "rcon_connect": "",
-}
-
-
-class EmojiEventProcessor:
-    """Processor to add emojis based on events"""
-    
-    def __call__(self, logger: Any, name: str, event_dict: EventDict) -> EventDict:
-        """Add emojis to event dictionary"""
-        level = event_dict.get("level", "info").upper()
-        level_emoji = LEVEL_EMOJIS.get(level, "")
-        
-        event_emoji = ""
-        event_type = event_dict.get("event_type")
-        if event_type and event_type in EVENT_EMOJIS:
-            event_emoji = EVENT_EMOJIS[event_type]
-        else:
-            event_msg = event_dict.get("event", "").lower()
-            for keyword, emoji in EVENT_EMOJIS.items():
-                if keyword.replace("_", " ") in event_msg:
-                    event_emoji = emoji
-                    break
-        
-        if event_emoji:
-            emoji_prefix = f"{event_emoji} "
-        elif level_emoji:
-            emoji_prefix = f"{level_emoji} "
-        else:
-            emoji_prefix = ""
-        
-        original_event = event_dict.get("event", "")
-        event_dict["event"] = f"{emoji_prefix}{original_event}"
-        
-        return event_dict
-
-
 class ContextProcessor:
     """Processor to add context information"""
     
@@ -101,7 +29,6 @@ class ContextProcessor:
             event_dict["container"] = container_name
         
         return event_dict
-
 
 class CustomConsoleRenderer:
     """Custom console renderer to match bash script format"""
@@ -153,7 +80,6 @@ class CustomConsoleRenderer:
             formatted_message += "".join(additional_info)
         
         return formatted_message
-
 
 def setup_logging(
     log_level: str = "INFO",
@@ -209,7 +135,6 @@ def setup_logging(
     processors = [
         structlog.contextvars.merge_contextvars,
         ContextProcessor(),
-        EmojiEventProcessor(),
         structlog.processors.add_log_level,
     ]
     
@@ -239,16 +164,13 @@ def setup_logging(
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
 
-
 def get_logger(name: str) -> structlog.BoundLogger:
     """Return structured logger instance"""
     return structlog.get_logger(name)
 
-
 def log_server_event(logger: structlog.BoundLogger, event_type: str, message: str, **kwargs) -> None:
     """Log server event"""
     logger.info(message, event_type=event_type, **kwargs)
-
 
 def log_player_event(logger: structlog.BoundLogger, event_type: str, player_name: str, **kwargs) -> None:
     """Log player event"""
@@ -256,7 +178,6 @@ def log_player_event(logger: structlog.BoundLogger, event_type: str, player_name
                 event_type=event_type, 
                 player_name=player_name, 
                 **kwargs)
-
 
 def log_api_call(logger: structlog.BoundLogger, endpoint: str, status_code: int, duration_ms: float, **kwargs) -> None:
     """Log API call"""
@@ -268,7 +189,6 @@ def log_api_call(logger: structlog.BoundLogger, endpoint: str, status_code: int,
                 status_code=status_code,
                 duration_ms=duration_ms,
                 **kwargs)
-
 
 def log_backup_event(logger: structlog.BoundLogger, event_type: str, backup_file: Optional[str] = None, **kwargs) -> None:
     """Log backup event"""

@@ -50,16 +50,22 @@ setup_permissions() {
         local puid=${PUID:-1000}
         local pgid=${PGID:-1000}
         
-        print_info "Ensuring steam user matches PUID:PGID ($puid:$pgid)..."
-        
-        # Modify group first
-        if [[ "$(id -g steam)" != "$pgid" ]]; then
-            groupmod -o -g "$pgid" steam
-        fi
-        
-        # Modify user
-        if [[ "$(id -u steam)" != "$puid" ]]; then
-            usermod -o -u "$puid" steam
+        # Guard against privileged UID/GID (0 = root)
+        if [[ "$puid" -eq 0 ]] || [[ "$pgid" -eq 0 ]]; then
+            print_warn "PUID=$puid or PGID=$pgid is root. Skipping user modification."
+            print_warn "Container will run as default steam user (UID: $(id -u steam), GID: $(id -g steam))."
+        else
+            print_info "Ensuring steam user matches PUID:PGID ($puid:$pgid)..."
+            
+            # Modify group first
+            if [[ "$(id -g steam)" != "$pgid" ]]; then
+                groupmod -o -g "$pgid" steam
+            fi
+            
+            # Modify user
+            if [[ "$(id -u steam)" != "$puid" ]]; then
+                usermod -o -u "$puid" steam
+            fi
         fi
     fi
 

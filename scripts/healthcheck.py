@@ -44,7 +44,10 @@ class HealthChecker:
         self.server_port = int(os.getenv('SERVER_PORT', '8211'))
         self.rcon_host = os.getenv('RCON_HOST', 'localhost')
         self.rcon_port = int(os.getenv('RCON_PORT', '25575'))
-        self.admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
+        self.admin_password = os.getenv('ADMIN_PASSWORD')
+        if not self.admin_password:
+            print('[ERROR] ADMIN_PASSWORD environment variable is not set', file=sys.stderr)
+            self.admin_password = ''
         self.rcon_password = self.admin_password
         self.timeout = 10
         self.results: List[HealthCheckResult] = []

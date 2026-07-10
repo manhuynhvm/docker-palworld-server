@@ -13,7 +13,7 @@ import structlog
 
 from src.logging_setup import (
     setup_logging, get_logger, log_server_event, log_player_event,
-    log_api_call, log_backup_event, EmojiEventProcessor, ContextProcessor,
+    log_api_call, log_backup_event, ContextProcessor,
     CustomConsoleRenderer
 )
 from structlog.types import EventDict
@@ -57,23 +57,6 @@ class TestSetupLogging:
         # which lazily wraps BoundLogger. Both are valid structlog loggers.
         assert isinstance(logger, (structlog.BoundLogger, structlog._config.BoundLoggerLazyProxy))
 
-
-class TestEmojiEventProcessor:
-    """FS-2.1.3: Emoji event processor."""
-
-    def test_level_emoji_added(self):
-        processor = EmojiEventProcessor()
-        event_dict: EventDict = {"level": "info", "event": "test message"}
-        result = processor(None, "test", event_dict)
-        assert result["event"] == "test message"
-    def test_event_type_emoji(self):
-        processor = EmojiEventProcessor()
-        event_dict: EventDict = {
-            "level": "info", "event": "test",
-            "event_type": "server_start"
-        }
-        result = processor(None, "test", event_dict)
-        assert result["event"] == "test"
 
 class TestContextProcessor:
     """FS-2.1.4: Context processor."""

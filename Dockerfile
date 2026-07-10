@@ -69,7 +69,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     python-is-python3 \
     pip \
     procps \
-    htop \
     tar \
     gzip \
     cron \

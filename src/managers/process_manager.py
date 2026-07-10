@@ -25,6 +25,8 @@ class ProcessManager(IProcessManager):
         self.logger = logger
         self.server_path = config.paths.server_dir
         self.server_process: Optional[subprocess.Popen] = None
+        self._process_start_time: Optional[float] = None
+        """Timestamp (time.time) when the server process was last started."""
     
     def is_server_running(self) -> bool:
         """Check if server is currently running"""
@@ -107,11 +109,13 @@ class ProcessManager(IProcessManager):
                 text=True,
                 start_new_session=True
             )
+            self._process_start_time = time.time()
             
             await asyncio.sleep(10)
             
             if not self.is_server_running():
                 stdout, stderr = self.server_process.communicate()
+                self._process_start_time = None
                 log_server_event(self.logger, "server_start_fail", 
                                f"Server start failed: {stderr}")
                 return False
@@ -171,6 +175,8 @@ class ProcessManager(IProcessManager):
                 pass
             except Exception:
                 pass
+            self.server_process = None
+            self._process_start_time = None
             
             log_server_event(self.logger, "server_stop_complete", 
                            "Server stopped successfully")
@@ -246,7 +252,7 @@ class ProcessManager(IProcessManager):
     
     def get_server_status(self) -> dict:
         """Get detailed server process status"""
-        if not self.is_server_running():
+        if not self.is_server_running() or self._process_start_time is None:
             return {
                 "running": False,
                 "pid": None,
@@ -256,7 +262,7 @@ class ProcessManager(IProcessManager):
         return {
             "running": True,
             "pid": self.server_process.pid,
-            "uptime": time.time() - self.server_process.create_time() if hasattr(self.server_process, 'create_time') else 0
+            "uptime": time.time() - self._process_start_time,
         }
     
     def get_startup_options_summary(self) -> dict:
