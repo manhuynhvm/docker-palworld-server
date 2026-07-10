@@ -12,7 +12,7 @@ class ServerConfig:
     """Server configuration data class"""
     name: str = "Palworld Server"
     password: str = ""
-    admin_password: str = "admin123"
+    admin_password: str = ""
     max_players: int = 32
     port: int = 8211
     description: str = "A Palworld dedicated server"

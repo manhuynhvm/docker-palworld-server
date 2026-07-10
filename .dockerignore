@@ -18,7 +18,7 @@ docs/
 *~
 
 # Testing
-tests/
+# tests/
 .pytest_cache/
 .coverage
 .tox/

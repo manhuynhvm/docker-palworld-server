@@ -150,7 +150,7 @@ class ConfigLoader(IConfigProvider):
         server_config = ServerConfig(
             name=config_dict.get('server', {}).get('name', 'Palworld Server'),
             password=config_dict.get('server', {}).get('password', ''),
-            admin_password=config_dict.get('server', {}).get('admin_password', 'admin123'),
+            admin_password=config_dict.get('server', {}).get('admin_password', ''),
             max_players=config_dict.get('server', {}).get('max_players', 32),
             port=config_dict.get('server', {}).get('port', 8211),
             description=config_dict.get('server', {}).get('description', 'A Palworld dedicated server'),

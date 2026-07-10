@@ -3,7 +3,7 @@ language: ${LANGUAGE:ko}
 server:
     name: "${SERVER_NAME:Palworld Server}"
     password: "${SERVER_PASSWORD:}"
-    admin_password: "${ADMIN_PASSWORD:admin123}"
+    admin_password: "${ADMIN_PASSWORD}"
     max_players: ${MAX_PLAYERS:32}
     port: ${SERVER_PORT:8211}
     description: "${SERVER_DESCRIPTION:A Palworld dedicated server}"
@@ -29,7 +29,7 @@ server_startup:
     additional_options: "${ADDITIONAL_SERVER_OPTIONS:}"
 
 palworld_settings:
-    AdminPassword: "${ADMIN_PASSWORD:admin123}"
+    AdminPassword: "${ADMIN_PASSWORD}"
     CoopPlayerMaxNum: ${COOP_PLAYER_MAX_NUM:4}
     PublicIP: "${PUBLIC_IP:}"
     PublicPort: ${PUBLIC_PORT:8211}
