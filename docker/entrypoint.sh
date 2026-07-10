@@ -47,8 +47,8 @@ setup_permissions() {
     
     # Handle PUID and PGID
     if [[ $EUID -eq 0 ]]; then
-        local puid=${PUID:-1000}
-        local pgid=${PGID:-1000}
+        local puid=${PUID:-1002}
+        local pgid=${PGID:-1002}
         
         # Guard against privileged UID/GID (0 = root)
         if [[ "$puid" -eq 0 ]] || [[ "$pgid" -eq 0 ]]; then

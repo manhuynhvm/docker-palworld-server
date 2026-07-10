@@ -7,7 +7,7 @@ name = "docker-palworld-server"
 version = "1.0.0"
 description = "Palworld Dedicated Server with FEX emulation for ARM64"
 authors = [
-    {name = "supersunho", email = "supersunho@example.com"}
+    {name = "supersunho", email = "supersunho@users.noreply.github.com"}
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
