@@ -657,6 +657,8 @@ jobs:
                   echo "EOF" >> $GITHUB_OUTPUT
 
             - name: 🏷️ Create Git tag via API
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   TAG_NAME="${{ needs.prepare.outputs.build_version }}"
                   if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
