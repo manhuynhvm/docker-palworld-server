@@ -656,15 +656,15 @@ jobs:
                   echo -e "$RELEASE_NOTES" >> $GITHUB_OUTPUT
                   echo "EOF" >> $GITHUB_OUTPUT
 
-            - name: 🏷️ Push Git tag
+            - name: 🏷️ Create Git tag via API
               run: |
                   TAG_NAME="${{ needs.prepare.outputs.build_version }}"
                   if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
                     echo "⚠️ Tag $TAG_NAME already exists, skipping creation"
                   else
-                    echo "🏷️ Creating and pushing tag: $TAG_NAME"
+                    echo "🏷️ Creating tag via GitHub API: $TAG_NAME"
                     git tag "$TAG_NAME"
-                    git push origin "$TAG_NAME"
+                    gh api repos/${{ github.repository }}/git/refs -f ref=refs/tags/$TAG_NAME -f sha=$(git rev-parse HEAD)
                   fi
 
             - name: 🏷️ Create comprehensive GitHub Release for Palworld Server
