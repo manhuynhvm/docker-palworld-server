@@ -1,0 +1,23 @@
+{{- if .Values.managementService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "palworld-server.fullname" . }}-management
+  labels:
+    app: {{ include "palworld-server.name" . }}
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.managementService.type }}
+  ports:
+    - port: {{ .Values.managementService.restApiPort }}
+      targetPort: rest-api
+      protocol: TCP
+      name: rest-api
+    - port: {{ .Values.managementService.rconPort }}
+      targetPort: rcon
+      protocol: TCP
+      name: rcon
+  selector:
+    app: {{ include "palworld-server.name" . }}
+    release: {{ .Release.Name }}
+{{- end }}

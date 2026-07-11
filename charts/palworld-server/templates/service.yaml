@@ -16,16 +16,6 @@ spec:
       targetPort: query
       protocol: UDP
       name: query
-    - port: {{ .Values.service.restApiPort }}
-      targetPort: rest-api
-      protocol: TCP
-      name: rest-api
-    {{- if .Values.rcon.enabled }}
-    - port: {{ .Values.service.rconPort }}
-      targetPort: rcon
-      protocol: TCP
-      name: rcon
-    {{- end }}
   selector:
     app: {{ include "palworld-server.name" . }}
     release: {{ .Release.Name }}

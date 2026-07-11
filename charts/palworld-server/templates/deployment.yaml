@@ -36,10 +36,10 @@ spec:
             - containerPort: 27015
               protocol: UDP
               name: query
-            - containerPort: {{ .Values.restApi.port }}
+            - containerPort: {{ .Values.managementService.restApiPort }}
               protocol: TCP
               name: rest-api
-            - containerPort: {{ .Values.rcon.port }}
+            - containerPort: {{ .Values.managementService.rconPort }}
               protocol: TCP
               name: rcon
           env:
@@ -48,7 +48,14 @@ spec:
             - name: SERVER_PASSWORD
               value: {{ .Values.server.password | quote }}
             - name: ADMIN_PASSWORD
-              value: {{ .Values.server.adminPassword | quote }}
+{{- if .Values.server.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.existingSecret }}
+                  key: {{ .Values.server.adminPasswordKey }}
+{{- else }}
+              value: {{ required "server.adminPassword is required when server.existingSecret is not set" .Values.server.adminPassword | quote }}
+{{- end }}
             - name: MAX_PLAYERS
               value: {{ .Values.server.maxPlayers | quote }}
             - name: SERVER_PORT
@@ -58,11 +65,11 @@ spec:
             - name: REST_API_ENABLED
               value: {{ .Values.restApi.enabled | quote }}
             - name: REST_API_PORT
-              value: {{ .Values.restApi.port | quote }}
+              value: {{ .Values.managementService.restApiPort | quote }}
             - name: RCON_ENABLED
               value: {{ .Values.rcon.enabled | quote }}
             - name: RCON_PORT
-              value: {{ .Values.rcon.port | quote }}
+              value: {{ .Values.managementService.rconPort | quote }}
             - name: MONITORING_MODE
               value: {{ .Values.monitoring.mode }}
             - name: LOG_LEVEL

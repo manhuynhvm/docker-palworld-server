@@ -13,22 +13,26 @@ image:
 server:
   name: "Palworld Server"
   password: ""
-  adminPassword: "changeme"
+  # adminPassword is now managed via Kubernetes Secret; see existingSecret below.
+  # If you must set a plain-text password here, uncomment the line below.
+  # adminPassword: "changeme"
   maxPlayers: 32
   port: 8211
   description: "A Palworld dedicated server"
   publicPort: 8211
   publicIp: ""
+  # Reference an existing Kubernetes Secret for ADMIN_PASSWORD.
+  # The secret must have the key specified by adminPasswordKey.
+  existingSecret: ""
+  adminPasswordKey: "admin-password" 
 
-# REST API configuration
+# REST API configuration (port moved to managementService)
 restApi:
   enabled: true
-  port: 8212
 
-# RCON configuration
+# RCON configuration (port moved to managementService)
 rcon:
   enabled: true
-  port: 25575
 
 # Monitoring
 monitoring:
@@ -73,12 +77,21 @@ persistence:
   logPath: /home/steam/logs
 
 # Service configuration
+#
+# External-facing game/query service
 service:
   type: LoadBalancer
   gamePort: 8211
   queryPort: 27015
+
+# Management service (REST API + RCON)
+# Disabled by default; enable only when external access is required.
+# When disabled, management ports are only reachable inside the cluster via ClusterIP.
+managementService:
+  enabled: false
   restApiPort: 8212
   rconPort: 25575
+  type: ClusterIP
 
 # Node selector (ARM64)
 nodeSelector:

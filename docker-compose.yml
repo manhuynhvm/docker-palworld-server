@@ -10,7 +10,7 @@ services:
         ports:
             - "8211:8211/udp" # Game server port
             - "27015:27015/udp" # Steam query port
-            - "8212:8212/tcp" # REST API port
+            - "127.0.0.1:8212:8212/tcp" # REST API port (localhost only)
             - "9090:9090/tcp" # Prometheus metrics (optional)
 
         volumes:
@@ -47,7 +47,7 @@ services:
         hostname: palworld-prometheus
         restart: unless-stopped
         ports:
-            - "9091:9090" # Prometheus UI (mapped to 9091 to avoid conflict)
+            - "127.0.0.1:9091:9090" # Prometheus UI (localhost only)
         volumes:
             - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
             - ./palworld_prometheus:/prometheus
@@ -64,10 +64,10 @@ services:
         hostname: palworld-grafana
         restart: unless-stopped
         ports:
-            - "3000:3000" # Grafana UI
+            - "127.0.0.1:3000:3000" # Grafana UI (localhost only)
         environment:
-            - GF_SECURITY_ADMIN_USER=admin
-            - GF_SECURITY_ADMIN_PASSWORD=admin
+            - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+            - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Grafana admin password is required}
             - GF_INSTALL_PLUGINS=
         volumes:
             - ./docker/grafana/datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
