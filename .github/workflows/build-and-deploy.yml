@@ -41,7 +41,7 @@ on:
 # Optimized concurrency management
 concurrency:
     group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event.inputs.build_version || github.event.inputs.source_version || 'latest' }}
-    cancel-in-progress: true
+    cancel-in-progress: false
 
 # Enhanced global environment variables
 env:
@@ -73,17 +73,20 @@ jobs:
         steps:
             - name: 🔍 Determine source and build versions
               id: get-version
+              env:
+                  SOURCE_VERSION_INPUT: ${{ github.event.inputs.source_version || '' }}
+                  BUILD_VERSION_INPUT: ${{ github.event.inputs.build_version || '' }}
               run: |
                   # =================================================================
                   # Step 1: Get Palworld Server source version
                   # =================================================================
 
-                  if [ "${{ github.event.inputs.source_version }}" = "latest" ] || [ -z "${{ github.event.inputs.source_version }}" ]; then
+                  if [ "$SOURCE_VERSION_INPUT" = "latest" ] || [ -z "$SOURCE_VERSION_INPUT" ]; then
                     echo "🔍 Using latest Palworld Server version"
                     SOURCE_VERSION="latest"
                     echo "📦 Using latest version as source: $SOURCE_VERSION"
                   else
-                    SOURCE_VERSION="${{ github.event.inputs.source_version }}"
+                    SOURCE_VERSION="$SOURCE_VERSION_INPUT"
                     echo "📌 Using specified source version: $SOURCE_VERSION"
                   fi
 
@@ -91,8 +94,8 @@ jobs:
                   # Step 2: Determine build version (custom or fallback to source)
                   # =================================================================
 
-                  if [ -n "${{ github.event.inputs.build_version }}" ]; then
-                    BUILD_VERSION="${{ github.event.inputs.build_version }}"
+                  if [ -n "$BUILD_VERSION_INPUT" ]; then
+                    BUILD_VERSION="$BUILD_VERSION_INPUT"
                     echo "🏷️ Using custom build version: $BUILD_VERSION"
                   else
                     BUILD_VERSION="$SOURCE_VERSION"
@@ -100,7 +103,66 @@ jobs:
                   fi
 
                   # =================================================================
-                  # Step 3: Process version strings for Docker tags
+                  # Step 3: Validate version inputs (security gate)
+                  # =================================================================
+
+                  validate_version() {
+                    local input="$1"
+                    local label="$2"
+
+                    if [ -z "$input" ]; then
+                      return 0
+                    fi
+
+                    # Reject shell metacharacters, quotes, newlines
+                    case "$input" in
+                      *\&*|*\;*|*\|*|*\$*|*\`*|*\(*|*\)*|*\{*|*\}*|*\<*|*\>*|*\[*|*\]*|*'*|*\n*|*\r*|*\t*|*"*)
+                        echo "❌ ERROR: ${label}='${input}' contains forbidden shell metacharacters"
+                        exit 1
+                        ;;
+                    esac
+
+                    # Reject whitespace
+                    if echo "$input" | grep -q '[[:space:]]'; then
+                      echo "❌ ERROR: ${label}='${input}' contains whitespace"
+                      exit 1
+                    fi
+
+                    # Allow: latest, v1, v1.2, v1.2.3, with optional -suffix
+                    if echo "$input" | grep -qE '^[vV]?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[a-zA-Z0-9]+)?$'; then
+                      return 0
+                    fi
+
+                    echo "❌ ERROR: ${label}='${input}' is not a valid version string."
+                    echo "   Allowed: latest, v1.0.0, 1.0.0, 1.0.0-beta, 1.0.0-rc1"
+                    exit 1
+                  }
+
+                  if [ -n "$BUILD_VERSION" ]; then
+                    validate_version "$BUILD_VERSION" "build_version"
+                  fi
+
+                  if [ "$SOURCE_VERSION" != "latest" ]; then
+                    validate_version "$SOURCE_VERSION" "source_version"
+                  fi
+
+                  echo "✅ Version validation passed"
+
+                  # =================================================================
+                  # Step 4: Sanitize outputs (single-line, no trailing whitespace)
+                  # =================================================================
+
+                  sanitize_output() {
+                    printf '%s' "$1" | tr -d '
+
+' | sed 's/[[:space:]]*$//'
+                  }
+
+                  SOURCE_VERSION="$(sanitize_output "$SOURCE_VERSION")"
+                  BUILD_VERSION="$(sanitize_output "$BUILD_VERSION")"
+
+                  # =================================================================
+                  # Step 5: Process version strings for Docker tags
                   # =================================================================
 
                   # Clean versions (remove 'v' prefix if present)
@@ -112,7 +174,7 @@ jobs:
                   BUILD_VERSION_BASE=${BUILD_VERSION_CLEAN%%-*}
 
                   # =================================================================
-                  # Step 4: Output summary and export variables
+                  # Step 6: Output summary and export variables
                   # =================================================================
 
                   echo ""
@@ -127,10 +189,10 @@ jobs:
                   echo "source_version=$SOURCE_VERSION" >> $GITHUB_OUTPUT
                   echo "source_version_clean=$SOURCE_VERSION_CLEAN" >> $GITHUB_OUTPUT
                   echo "source_version_base=$SOURCE_VERSION_BASE" >> $GITHUB_OUTPUT
-
                   echo "build_version=$BUILD_VERSION" >> $GITHUB_OUTPUT
                   echo "build_version_clean=$BUILD_VERSION_CLEAN" >> $GITHUB_OUTPUT
                   echo "build_version_base=$BUILD_VERSION_BASE" >> $GITHUB_OUTPUT
+                  echo "version_validated=true" >> $GITHUB_OUTPUT
 
     ##############################################################################
     # 1.5) Run Python test suite
@@ -151,20 +213,20 @@ jobs:
               run: |
                   python -m pip install --upgrade pip
                   pip install -r requirements.txt
-                  pip install pytest pytest-asyncio
+                  pip install pytest pytest-asyncio pytest-cov
 
-            - name: 🧪 Run pytest suite
+            - name: 🧪 Run pytest suite with coverage gate
               id: test
               continue-on-error: false
               run: |
-                  python -m pytest --tb=short -q 2>&1 | tee pytest_output.txt
+                  python -m pytest --cov=src --cov-report=term-missing --tb=short -q 2>&1 | tee pytest_output.txt
                   echo "status=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
-            - name: 📊 Test summary
+            - name: 📊 Test and coverage summary
               run: |
                   echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
                   echo '```' >> $GITHUB_STEP_SUMMARY
-                  tail -5 pytest_output.txt 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No test output" >> $GITHUB_STEP_SUMMARY
+                  grep -E '(passed|failed|error|warnings?|[0-9]+%)' pytest_output.txt 2>/dev/null | tail -20 >> $GITHUB_STEP_SUMMARY || echo "No test output" >> $GITHUB_STEP_SUMMARY
                   echo '```' >> $GITHUB_STEP_SUMMARY
 
 
@@ -177,17 +239,20 @@ jobs:
         permissions:
             contents: read
             packages: write
+        env:
+            BUILD_VERSION_BASE: ${{ needs.prepare.outputs.build_version_base }}
+            SOURCE_VERSION_BASE: ${{ needs.prepare.outputs.source_version_base }}
         steps:
             - name: 🎯 Display build target information
               run: |
                   echo "🎯 Building Palworld Server container for: linux/arm64"
-                  echo "📦 Palworld Server Source: ${{ needs.prepare.outputs.source_version_base }}"
-                  echo "🏷️ Build Tag: ${{ needs.prepare.outputs.build_version_base }}"
+                  echo "📦 Palworld Server Source: ${{ env.SOURCE_VERSION_BASE }}"
+                  echo "🏷️ Build Tag: ${{ env.BUILD_VERSION_BASE }}"
 
             - name: 🔍 Check existing images via registry API
               id: check-images
               run: |
-                  IMAGE_TAG="${{ needs.prepare.outputs.build_version_base }}-arm64"
+                  IMAGE_TAG="${{ env.BUILD_VERSION_BASE }}-arm64"
                   echo "🔍 Checking if image exists: $IMAGE_TAG"
 
                   # Always build on workflow_dispatch with force_rebuild
@@ -295,7 +360,7 @@ jobs:
             - name: 🧪 Comprehensive container verification
               if: steps.check-images.outputs.build_image == 'true' && github.event.inputs.verify_build == 'true'
               run: |
-                  IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64"
+                  IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILD_VERSION_BASE }}-arm64"
                   echo "🔍 Starting verification suite for arm64..."
 
                   echo "📋 Test 1: Binary Verification"
@@ -348,6 +413,9 @@ jobs:
         permissions:
             contents: read
             packages: write
+        env:
+            BUILD_VERSION_BASE: ${{ needs.prepare.outputs.build_version_base }}
+            SOURCE_VERSION_BASE: ${{ needs.prepare.outputs.source_version_base }}
         steps:
             - name: 📥 Download digest artifact
               uses: actions/download-artifact@v4
@@ -397,7 +465,7 @@ jobs:
 
             - name: 🏷️ Create ARM64-only manifests
               run: |
-                  VERSION="${{ needs.prepare.outputs.build_version_base }}"
+                  VERSION="${{ env.BUILD_VERSION_BASE }}"
                   echo "📦 Creating ARM64-only manifests..."
                   echo "🎯 Target version: $VERSION"
 
@@ -465,9 +533,9 @@ jobs:
                   # 🚀 Palworld Server ARM64 Build Summary
 
                   **Build Date**: $BUILD_DATE  
-                  **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
-                  **Build/Release Tag**: ${{ needs.prepare.outputs.build_version_base }}  
-                  **Source Release Tag**: ${{ needs.prepare.outputs.source_version }}  
+                  **Palworld Server Source Version**: ${{ env.SOURCE_VERSION_BASE }}  
+                  **Build/Release Tag**: ${{ env.BUILD_VERSION_BASE }}  
+                  **Source Release Tag**: ${{ env.SOURCE_VERSION }}  
                   **Build Number**: #${{ github.run_number }}  
                   **Repository**: [${{ github.repository }}](https://github.com/${{ github.repository }})  
                   **Workflow Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
@@ -485,14 +553,14 @@ jobs:
                   \`\`\`
                   # ARM64-specific image
                   docker pull ${{ env.DOCKERHUB_REPO }}:latest-arm64    # ARM64 only
-                  docker pull ${{ env.DOCKERHUB_REPO }}:${{ needs.prepare.outputs.build_version_base }}-arm64
+                  docker pull ${{ env.DOCKERHUB_REPO }}:${{ env.BUILD_VERSION_BASE }}-arm64
                   \`\`\`
 
                   #### 🔄 GitHub Container Registry (GHCR)
                   \`\`\`
                   # ARM64-specific image
                   docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
-                  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.build_version_base }}-arm64
+                  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.BUILD_VERSION_BASE }}-arm64
                   \`\`\`
 
                   ## 🚀 Quick Start Commands (ARM64)
@@ -531,6 +599,11 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
+        env:
+            BUILD_VERSION: ${{ needs.prepare.outputs.build_version }}
+            BUILD_VERSION_BASE: ${{ needs.prepare.outputs.build_version_base }}
+            SOURCE_VERSION: ${{ needs.prepare.outputs.source_version }}
+            SOURCE_VERSION_BASE: ${{ needs.prepare.outputs.source_version_base }}
         steps:
             - name: 📥 Checkout repository
               uses: actions/checkout@v4
@@ -543,7 +616,7 @@ jobs:
               run: |
                   # Get the tag of the previous release to compare commits
                   # We use the most recent tag that IS NOT the one we are about to create
-                  PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ needs.prepare.outputs.build_version }}" | head -n 1 2>/dev/null)
+                  PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ env.BUILD_VERSION }}" | head -n 1 2>/dev/null)
 
                   if [ -z "$PREV_TAG" ]; then
                     echo "🔍 No previous tag found, using initial commit"
@@ -589,11 +662,11 @@ jobs:
                   done < <(git log --oneline "${PREV_TAG}..HEAD" --pretty=format:"%h|%s" | sort -k2)
 
                   # Create release notes body with categorized commits
-                  RELEASE_NOTES="# 🚀 Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }}
+                  RELEASE_NOTES="# 🚀 Palworld Server ARM64 Release ${{ env.BUILD_VERSION }}
 
                   **Build Date**: ${{ env.BUILD_DATE }}  
-                  **Palworld Server Source Version**: ${{ needs.prepare.outputs.source_version_base }}  
-                  **Build/Release Version**: ${{ needs.prepare.outputs.build_version_base }}  
+                  **Palworld Server Source Version**: ${{ env.SOURCE_VERSION_BASE }}  
+                  **Build/Release Version**: ${{ env.BUILD_VERSION_BASE }}  
                   **Platform**: ARM64 optimized  
                   **Build Workflow**: #${{ github.run_number }}
 
@@ -660,7 +733,7 @@ jobs:
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  TAG_NAME="${{ needs.prepare.outputs.build_version }}"
+                  TAG_NAME="${{ env.BUILD_VERSION }}"
                   if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
                     echo "⚠️ Tag $TAG_NAME already exists, skipping creation"
                   else
@@ -672,8 +745,8 @@ jobs:
             - name: 🏷️ Create comprehensive GitHub Release for Palworld Server
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ needs.prepare.outputs.build_version }}
-                  name: "Palworld Server ARM64 Release ${{ needs.prepare.outputs.build_version }} (Build #${{ github.run_number }})"
+                  tag_name: ${{ env.BUILD_VERSION }}
+                  name: "Palworld Server ARM64 Release ${{ env.BUILD_VERSION }} (Build #${{ github.run_number }})"
                   body: ${{ steps.release-notes.outputs.body }}
                   files: /tmp/digests/*/digest.txt
                   draft: false
