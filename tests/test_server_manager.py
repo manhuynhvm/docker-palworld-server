@@ -71,8 +71,9 @@ class TestPalworldServerManager:
 
     @pytest.mark.asyncio
     async def test_server_startup_success(self, manager):
-        """FS-13.1.4: Full startup succeeds."""
-        result = await manager.start_server_with_verification()
+        """FS-13.1.4: Full startup succeeds (wait_for_api_ready mocked)."""
+        with patch('src.server_manager.wait_for_api_ready', new=AsyncMock(return_value=True)):
+            result = await manager.start_server_with_verification()
         assert result is True
         assert manager._startup_completed is True
 

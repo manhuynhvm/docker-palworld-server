@@ -7,6 +7,7 @@ Handles server process lifecycle, monitoring, and signal delivery.
 import asyncio
 import os
 import signal
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -59,7 +60,7 @@ class ProcessManager(IProcessManager):
             options.append(f"-logformat={startup_cfg.log_format}")
         
         if startup_cfg.additional_options:
-            additional_opts = startup_cfg.additional_options.strip().split()
+            additional_opts = shlex.split(startup_cfg.additional_options.strip())
             options.extend(additional_opts)
         
         return options
@@ -70,9 +71,9 @@ class ProcessManager(IProcessManager):
         startup_options = self._build_startup_options()
         
         if startup_options:
-            command = f"{server_executable} {' '.join(startup_options)}"
+            command = f"{server_executable} {shlex.join(startup_options)}"
             log_server_event(self.logger, "server_command_build", 
-                           f"Server command with options: {' '.join(startup_options)}")
+                           f"Server command with options: {shlex.join(startup_options)}")
         else:
             command = str(server_executable)
             log_server_event(self.logger, "server_command_build", 
@@ -100,12 +101,13 @@ class ProcessManager(IProcessManager):
             
             full_cmd = self._build_server_command()
             
-            # Create a new process group to manage FEXBash and all child processes
+            # Inherit parent stdout/stderr to avoid pipe deadlock with long-running process.
+            # Output is captured by Docker/Supervisor logging.
             self.server_process = subprocess.Popen(
                 full_cmd,
                 cwd=str(self.server_path),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None,
+                stderr=None,
                 text=True,
                 start_new_session=True
             )
@@ -114,10 +116,9 @@ class ProcessManager(IProcessManager):
             await asyncio.sleep(10)
             
             if not self.is_server_running():
-                stdout, stderr = self.server_process.communicate()
                 self._process_start_time = None
                 log_server_event(self.logger, "server_start_fail", 
-                               f"Server start failed: {stderr}")
+                               "Server start failed - check logs for details")
                 return False
             
             log_server_event(self.logger, "server_start_complete", 
@@ -168,9 +169,9 @@ class ProcessManager(IProcessManager):
                     # Process group already terminated
                     pass
             
-            # Clean up zombie process by reading remaining output
+            # Clean up zombie process
             try:
-                self.server_process.communicate(timeout=2)
+                self.server_process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 pass
             except Exception:

@@ -3,7 +3,7 @@
 import pytest
 import asyncio
 import signal
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from pathlib import Path
 from src.managers.process_manager import ProcessManager
 
@@ -44,6 +44,126 @@ class TestProcessManager:
         assert status["running"] is False
         assert status["pid"] is None
 
+
+    # ---- Security regression tests (Phase 3) ----
+
+    def test_additional_options_shlex_split_preserves_tokens(self, manager):
+        """SEC-3.1: shlex.split preserves shell metacharacters as single tokens."""
+        startup_cfg = manager.config.server_startup
+        # These would be split into multiple tokens by str.split(),
+        # but shlex.split preserves them as single arguments.
+        test_cases = [
+            ('arg1 arg2', ['arg1', 'arg2']),
+            ('"; echo INJECTED; "', ['; echo INJECTED; ']),
+            ('arg1 | arg2', ['arg1', '|', 'arg2']),
+        ]
+        for payload, expected in test_cases:
+            startup_cfg.additional_options = payload
+            options = manager._build_startup_options()
+            for exp in expected:
+                assert exp in options, f"Expected {exp} in {options} for payload {payload}"
+
+    def test_additional_options_malformed_quote_raises(self, manager):
+        """SEC-3.2: Badly quoted additional_options raises ValueError."""
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = '--flag="unclosed'
+        with pytest.raises(ValueError):
+            manager._build_startup_options()
+
+    def test_additional_options_preserves_normal_args(self, manager):
+        """SEC-3.3: Normal additional_options are preserved as separate tokens."""
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = '--foo=bar --baz "quoted arg"'
+        options = manager._build_startup_options()
+        assert '--foo=bar' in options
+        assert '--baz' in options
+        assert 'quoted arg' in options
+
+    def test_build_server_command_uses_shlex_join(self, manager):
+        """SEC-3.4: Server command uses shlex.join for safe serialization."""
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = '--opt-with=some value'
+        cmd = manager._build_server_command()
+        # The command should be a list starting with FEXBash
+        assert cmd[0] == 'FEXBash'
+        assert cmd[1] == '-c'
+        # The shell command string should preserve the quoted value
+        assert 'some value' in cmd[2] or "'some value'" in cmd[2] or '"some value"' in cmd[2]
+
+    def test_start_server_no_pipe(self, manager):
+        """SEC-3.5: start_server Popen does not use stdout=PIPE or stderr=PIPE."""
+        import subprocess
+        from src.managers.process_manager import ProcessManager
+        
+        # Verify via source code inspection
+        import inspect
+        source = inspect.getsource(ProcessManager.start_server)
+        assert 'stdout=subprocess.PIPE' not in source
+        assert 'stderr=subprocess.PIPE' not in source
+            
+    def test_server_output_not_captured_in_pipe(self, manager):
+        """SEC-3.6: Server Popen does not use stdout=PIPE or stderr=PIPE."""
+        # Verify by checking the source code of start_server
+        import inspect
+        from src.managers.process_manager import ProcessManager
+        source = inspect.getsource(ProcessManager.start_server)
+        assert 'subprocess.PIPE' not in source,             "start_server must not use PIPE for long-running process" 
+
+    # ---- Additional coverage tests ----
+
+    def test_build_server_command_no_options(self, manager):
+        """FS-10.x: _build_server_command works without startup options."""
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = ''
+        startup_cfg.use_performance_threads = False
+        startup_cfg.disable_async_loading = False
+        startup_cfg.use_multithread_for_ds = False
+        cmd = manager._build_server_command()
+        assert cmd[0] == 'FEXBash'
+        assert cmd[1] == '-c'
+        # Should reference the server executable path
+        assert 'PalServer.sh' in cmd[2]
+
+    def test_get_server_status_running(self, manager):
+        """FS-10.x: get_server_status returns running info when process active."""
+        import time
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        manager.server_process = mock_process
+        manager._process_start_time = time.time()
+        status = manager.get_server_status()
+        assert status["running"] is True
+        assert status["pid"] == mock_process.pid
+        assert status["uptime"] > 0
+
+    def test_get_server_status_no_start_time(self, manager):
+        """FS-10.x: get_server_status returns not-running when _process_start_time is None."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        manager.server_process = mock_process
+        manager._process_start_time = None
+        status = manager.get_server_status()
+        assert status["running"] is False
+        assert status["uptime"] == 0
+
+    def test_get_startup_options_summary_all_disabled(self, manager):
+        """FS-10.x: Options summary with all features disabled."""
+        startup_cfg = manager.config.server_startup
+        startup_cfg.use_performance_threads = False
+        startup_cfg.disable_async_loading = False
+        startup_cfg.use_multithread_for_ds = False
+        startup_cfg.query_port = 27015
+        startup_cfg.additional_options = ''
+        summary = manager.get_startup_options_summary()
+        assert summary["performance_optimization"] is False
+        assert summary["options_count"] == 0
+
+    def test_reload_config_signal_failure(self, manager):
+        """FS-10.x: reload_config returns False when send_signal fails."""
+        from unittest.mock import AsyncMock
+        with patch.object(manager, 'send_signal', new=AsyncMock(return_value=False)):
+            result = asyncio.run(manager.reload_config())
+            assert result is False
     def test_get_startup_options_summary(self, manager):
         """FS-10.6: Options summary returns dict."""
         summary = manager.get_startup_options_summary()
