@@ -1,5 +1,6 @@
 """Tests for the SteamCMD client."""
 
+import subprocess
 import pytest
 import stat
 from pathlib import Path
@@ -37,8 +38,34 @@ class TestSteamCMDClient:
         result = manager.run_command(["+quit"])
         assert result is False
 
-    @patch('subprocess.run')
-    def test_run_command_success(self, mock_run, manager, tmp_path):
+    # ------------------------------------------------------------------
+    # Helper: build a mock Popen process whose stdout/stderr readline()
+    # returns the provided lines then '' (signalling EOF).
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _mock_process(returncode=0, stdout_lines=None, stderr_lines=None):
+        proc = MagicMock()
+        proc.wait.return_value = returncode
+
+        def _make_stream(lines):
+            stream = MagicMock()
+            if not lines:
+                stream.readline.return_value = ''
+            else:
+                it = iter(list(lines) + [''])
+                stream.readline.side_effect = lambda: next(it)
+            stream.close = MagicMock()
+            return stream
+
+        proc.stdout = _make_stream(stdout_lines)
+        proc.stderr = _make_stream(stderr_lines)
+        return proc
+
+    # ------------------------------------------------------------------
+    # run_command tests  (now mock Popen instead of subprocess.run)
+    # ------------------------------------------------------------------
+    @patch('subprocess.Popen')
+    def test_run_command_success(self, mock_popen, manager, tmp_path):
         """FS-7.2: Successful SteamCMD execution."""
         script = tmp_path / "steamcmd.sh"
         script.write_text("#!/bin/bash")
@@ -46,14 +73,18 @@ class TestSteamCMDClient:
         manager.steamcmd_script = script
         manager.steamcmd_path = tmp_path
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        # Warmup process + real command process, both succeed
+        mock_popen.side_effect = [
+            self._mock_process(returncode=0),
+            self._mock_process(returncode=0),
+        ]
 
         result = manager.run_command(["+quit"])
         assert result is True
-        assert mock_run.call_count == 2
+        assert mock_popen.call_count == 2
 
-    @patch('subprocess.run')
-    def test_run_command_failure(self, mock_run, manager, tmp_path):
+    @patch('subprocess.Popen')
+    def test_run_command_failure(self, mock_popen, manager, tmp_path):
         """FS-7.2: Failed SteamCMD execution."""
         script = tmp_path / "steamcmd.sh"
         script.write_text("#!/bin/bash")
@@ -61,13 +92,17 @@ class TestSteamCMDClient:
         manager.steamcmd_script = script
         manager.steamcmd_path = tmp_path
 
-        mock_run.return_value = MagicMock(returncode=1, stdout="error", stderr="fail")
+        # Warmup succeeds, real command fails
+        mock_popen.side_effect = [
+            self._mock_process(returncode=0),
+            self._mock_process(returncode=1, stderr_lines=["error"]),
+        ]
 
         result = manager.run_command(["+quit"])
         assert result is False
 
-    @patch('subprocess.run')
-    def test_run_command_sets_env_vars(self, mock_run, manager, tmp_path):
+    @patch('subprocess.Popen')
+    def test_run_command_sets_env_vars(self, mock_popen, manager, tmp_path):
         """FS-7.3: SteamCMD env vars are set."""
         script = tmp_path / "steamcmd.sh"
         script.write_text("#!/bin/bash")
@@ -75,18 +110,22 @@ class TestSteamCMDClient:
         manager.steamcmd_script = script
         manager.steamcmd_path = tmp_path
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_popen.side_effect = [
+            self._mock_process(returncode=0),
+            self._mock_process(returncode=0),
+        ]
 
         manager.run_command(["+quit"])
-        call_kwargs = mock_run.call_args_list[1][1]
+
+        # Check the second call (index 1) = the actual command
+        call_args, call_kwargs = mock_popen.call_args_list[1]
         env = call_kwargs['env']
         assert 'STEAM_COMPAT_DATA_PATH' in env
         assert 'STEAM_COMPAT_CLIENT_INSTALL_PATH' in env
-        args, _ = mock_run.call_args
-        assert "FEXBash" in args[0]
+        assert "FEXBash" in call_args[0]
 
-    @patch('subprocess.run')
-    def test_run_command_timeout(self, mock_run, manager, tmp_path):
+    @patch('subprocess.Popen')
+    def test_run_command_timeout(self, mock_popen, manager, tmp_path):
         """FS-7.4: Timeout handling."""
         script = tmp_path / "steamcmd.sh"
         script.write_text("#!/bin/bash")
@@ -94,7 +133,16 @@ class TestSteamCMDClient:
         manager.steamcmd_script = script
         manager.steamcmd_path = tmp_path
 
-        mock_run.side_effect = TimeoutError("timeout")
+        # Warmup succeeds; real command times out
+        warmup_proc = self._mock_process(returncode=0)
+        timeout_proc = MagicMock()
+        timeout_proc.stdout.readline.return_value = ''
+        timeout_proc.stderr.readline.return_value = ''
+        timeout_proc.stdout.close = MagicMock()
+        timeout_proc.stderr.close = MagicMock()
+        timeout_proc.wait.side_effect = subprocess.TimeoutExpired("FEXBash", 10)
+
+        mock_popen.side_effect = [warmup_proc, timeout_proc]
 
         result = manager.run_command(["+quit"], timeout=10)
         assert result is False
