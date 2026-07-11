@@ -109,6 +109,62 @@ class TestProcessManager:
         source = inspect.getsource(ProcessManager.start_server)
         assert 'subprocess.PIPE' not in source,             "start_server must not use PIPE for long-running process" 
 
+
+    def test_build_server_command_no_options_explicit(self, manager):
+        """FS-10.x: Empty additional_options produces no extras."""
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = ''
+        startup_cfg.use_performance_threads = False
+        startup_cfg.disable_async_loading = False
+        startup_cfg.use_multithread_for_ds = False
+        startup_cfg.query_port = 27015
+        startup_cfg.log_format = 'text'
+        startup_cfg.enable_public_lobby = False
+        opts = manager._build_startup_options()
+        assert len(opts) == 0
+
+    def test_send_signal_error_returns_false(self, manager):
+        """FS-10.x: send_signal returns False on unexpected error."""
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_process.poll.return_value = None
+        manager.server_process = mock_process
+        with patch('os.killpg', side_effect=OSError("permission denied")):
+            result = asyncio.run(manager.send_signal(signal.SIGTERM))
+            assert result is False
+
+    def test_reload_config_sends_sighup(self, manager):
+        """FS-10.x: reload_config delegates to send_signal with SIGHUP."""
+        with patch.object(manager, 'send_signal', new=AsyncMock(return_value=True)) as mock_send:
+            result = asyncio.run(manager.reload_config())
+            assert result is True
+            mock_send.assert_called_once_with(signal.SIGHUP)
+
+    def test_pause_and_resume_server(self, manager):
+        """FS-10.x: pause and resume delegate to send_signal."""
+        mock_process = MagicMock()
+        mock_process.pid = 12345
+        mock_process.poll.return_value = None
+        manager.server_process = mock_process
+        with patch('os.killpg') as mock_kill:
+            result_pause = asyncio.run(manager.pause_server())
+            assert result_pause is True
+            mock_kill.assert_called_with(12345, signal.SIGSTOP)
+            result_resume = asyncio.run(manager.resume_server())
+            assert result_resume is True
+            mock_kill.assert_called_with(12345, signal.SIGCONT)
+
+    def test_is_server_running_with_positive_returncode(self, manager):
+        """FS-10.x: is_server_running returns False when process exited with code."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = 0
+        manager.server_process = mock_process
+        assert manager.is_server_running() is False
+
+    def test_is_server_running_with_none_process(self, manager):
+        """FS-10.x: is_server_running returns False when server_process is None."""
+        manager.server_process = None
+        assert manager.is_server_running() is False
     # ---- Additional coverage tests ----
 
     def test_build_server_command_no_options(self, manager):
