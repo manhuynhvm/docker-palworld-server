@@ -299,11 +299,11 @@ jobs:
                   SERVER_PORT=8211
                   REST_API_PORT=8212
                   EOF
-                  GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
-                    docker compose config > /dev/null 2>&1 && {
+                  if GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
+                    docker compose config > /dev/null 2>&1; then
                     echo "❌ compose config succeeded despite missing ADMIN_PASSWORD" >&2
                     exit 1
-                  } || true
+                  fi
                   OUTPUT=$(GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
                     docker compose config 2>&1 || true)
                   if echo "$OUTPUT" | grep -qi 'ADMIN_PASSWORD'; then
@@ -325,10 +325,10 @@ jobs:
                   SERVER_PORT=8211
                   REST_API_PORT=8212
                   EOF
-                  docker compose config > /dev/null 2>&1 && {
+                  if docker compose config > /dev/null 2>&1; then
                     echo "❌ compose config succeeded despite missing GRAFANA_ADMIN_PASSWORD" >&2
                     exit 1
-                  } || true
+                  fi
                   OUTPUT=$(docker compose config 2>&1 || true)
                   if echo "$OUTPUT" | grep -qi 'GRAFANA_ADMIN_PASSWORD'; then
                     echo "✅ compose correctly rejected missing GRAFANA_ADMIN_PASSWORD"
@@ -650,7 +650,7 @@ jobs:
             - name: 📊 Generate comprehensive build summary for Palworld Server
               run: |
                   # Pre-calculate digest values and status
-                  ARM64_DIGEST=$(cat /tmp/digests/digests-arm64/digest.txt 2>/dev/null | cut -c1-12 || echo "N/A")
+                  ARM64_DIGEST=$(cut -c1-12 /tmp/digests/digests-arm64/digest.txt 2>/dev/null || echo "N/A")
                   ARM64_STATUS=$([ -f /tmp/digests/digests-arm64/digest.txt ] && echo "✅ Success" || echo "❌ Failed")
 
                   BUILD_COUNT=$(find /tmp/digests -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | wc -l || echo "0")
