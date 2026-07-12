@@ -8,6 +8,7 @@ import asyncio
 from src.monitoring.player_monitor import PlayerEventType
 
 
+
 class TestMonitoringManager:
     """FS-13.2.x: Monitoring manager behavior."""
 
@@ -51,24 +52,22 @@ class TestMonitoringManager:
     @pytest.mark.asyncio
     async def test_start_stop_monitoring(self, manager):
         """FS-13.2.1: Start and stop monitoring lifecycle."""
-        manager.player_monitor.start_monitoring = AsyncMock()
-        manager.server_monitor.start_monitoring = AsyncMock()
-        manager.idle_restart_manager.start_monitoring = AsyncMock()
+        with patch.object(manager.player_monitor, 'start_monitoring', AsyncMock()),              patch.object(manager.server_monitor, 'start_monitoring', AsyncMock()),              patch.object(manager.idle_restart_manager, 'start_monitoring', AsyncMock()):
 
-        await manager.start_monitoring()
-        assert manager._monitoring_active is True
+            await manager.start_monitoring()
+            assert manager._monitoring_active is True
 
-        # start_monitoring uses asyncio.create_task internally, so yield to event loop
-        await asyncio.sleep(0)
+            # start_monitoring uses asyncio.create_task internally, so yield to event loop
+            await asyncio.sleep(0)
 
-        # discord.enabled is False in fixture, so player_monitor is skipped
-        manager.player_monitor.start_monitoring.assert_not_called()
-        # server and idle_restart are always started
-        manager.server_monitor.start_monitoring.assert_called()
-        manager.idle_restart_manager.start_monitoring.assert_called()
+            # discord.enabled is False in fixture, so player_monitor is skipped
+            manager.player_monitor.start_monitoring.assert_not_called()
+            # server and idle_restart are always started
+            manager.server_monitor.start_monitoring.assert_called()
+            manager.idle_restart_manager.start_monitoring.assert_called()
 
-        await manager.stop_monitoring()
-        assert manager._monitoring_active is False
+            await manager.stop_monitoring()
+            assert manager._monitoring_active is False
 
     def test_is_monitoring_active(self, manager):
         """FS-13.2: Active state tracking."""
@@ -99,3 +98,68 @@ class TestMonitoringManager:
         manager._setup_event_callbacks = MagicMock()
         manager.reset_callbacks()
         manager._setup_event_callbacks.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_start_monitoring_already_active(self, manager):
+        """FS-13.2.2: start_monitoring warns when already active."""
+        manager._monitoring_active = True
+        with patch.object(manager.logger, 'warning') as mock_warn:
+            await manager.start_monitoring()
+            mock_warn.assert_called_once_with("Monitoring already active")
+
+    @pytest.mark.asyncio
+    async def test_start_monitoring_discord_enabled(self, manager):
+        """FS-13.2.2: start_monitoring starts player monitor when discord enabled."""
+        with patch.object(manager.config.discord, 'enabled', True),              patch.object(manager.player_monitor, 'start_monitoring', AsyncMock()),              patch.object(manager.server_monitor, 'start_monitoring', AsyncMock()),              patch.object(manager.idle_restart_manager, 'start_monitoring', AsyncMock()):
+
+            await manager.start_monitoring()
+            await asyncio.sleep(0)
+
+            manager.player_monitor.start_monitoring.assert_called()
+            manager.server_monitor.start_monitoring.assert_called()
+
+            await manager.stop_monitoring()
+
+    @pytest.mark.asyncio
+    async def test_stop_monitoring_not_active(self, manager):
+        """FS-13.2.2: stop_monitoring is no-op when not active."""
+        assert manager._monitoring_active is False
+        await manager.stop_monitoring()  # should not raise
+        assert manager._monitoring_active is False
+
+
+    @pytest.mark.asyncio
+    async def test_start_monitoring_exception_cleanup(self, manager):
+        """FS-13.2.x: start_monitoring calls stop_monitoring when create_task fails."""
+        # Mock the monitor methods to avoid creating unawaited coroutines
+        manager.player_monitor.start_monitoring = MagicMock(return_value=AsyncMock())
+        manager.server_monitor.start_monitoring = MagicMock(return_value=AsyncMock())
+        manager.idle_restart_manager.start_monitoring = MagicMock(return_value=AsyncMock())
+        with patch.object(manager, 'stop_monitoring', AsyncMock()) as mock_stop:
+            with patch('asyncio.create_task', side_effect=Exception('task failed')):
+                with pytest.raises(Exception, match='task failed'):
+                    await manager.start_monitoring()
+                mock_stop.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_monitoring_twice_safe(self, manager):
+        """FS-13.2.x: calling stop twice is safe (second call early-returns)."""
+        manager._monitoring_active = True
+        manager.player_monitor.stop_monitoring = AsyncMock()
+        manager.server_monitor.stop_monitoring = AsyncMock()
+        manager.idle_restart_manager.stop_monitoring = AsyncMock()
+        await manager.stop_monitoring()
+        assert manager._monitoring_active is False
+        # Second call should early-return since already stopped
+        await manager.stop_monitoring()
+        assert manager._monitoring_active is False
+
+    @pytest.mark.asyncio
+    async def test_handle_backup_completion_skips_discord(self, manager):
+        """FS-13.2.5: Backup completion dispatches to event_dispatcher."""
+        manager.event_dispatcher.handle_backup_completion = AsyncMock()
+        await manager.handle_backup_completion({"file": "test.tar.gz"})
+        manager.event_dispatcher.handle_backup_completion.assert_awaited_once_with(
+            {"file": "test.tar.gz"}
+        )
+        await asyncio.sleep(0)  # yield to let the loop clean up

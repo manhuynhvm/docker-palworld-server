@@ -71,6 +71,22 @@ class TestLifecycleManager:
         assert status["running"] is True
 
 
+
+    @pytest.mark.asyncio
+    async def test_stop_already_stopped(self, manager):
+        """FS-9.3: Stop returns True when already stopped."""
+        manager.process_manager.is_server_running = MagicMock(return_value=False)
+        result = await manager.stop(graceful=True)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_restart_start_fails(self, manager):
+        """FS-9.4: Restart fails if start fails after stop."""
+        manager.process_manager.stop_server = AsyncMock(return_value=True)
+        manager.process_manager.start_server = AsyncMock(return_value=False)
+        result = await manager.restart()
+        assert result is False
+
 class TestVerifyServerStartup:
     """FS-9.5: verify_server_startup function."""
 

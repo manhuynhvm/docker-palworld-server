@@ -107,3 +107,63 @@ class TestMessageLoader:
         """FS-20.1: Raises error for missing dir."""
         with pytest.raises(FileNotFoundError):
             MessageLoader(str(tmp_path / "nonexistent"))
+
+
+    def test_get_status_message_many(self, loader):
+        """FS-20.6: Status for many players."""
+        msg = loader.get_status_message(10, "ko")
+        assert "10명" in msg
+
+    def test_get_greeting_afternoon(self, loader):
+        """FS-20.6: Afternoon greeting."""
+        with patch('src.notifications.message_loader.datetime') as mock_dt:
+            mock_dt.now.return_value.hour = 14
+            greeting = loader.get_greeting("ko")
+            assert greeting == "좋은 오후"
+
+    def test_get_greeting_evening(self, loader):
+        """FS-20.6: Evening greeting."""
+        with patch('src.notifications.message_loader.datetime') as mock_dt:
+            mock_dt.now.return_value.hour = 20
+            greeting = loader.get_greeting("ko")
+            assert greeting == "좋은 저녁"
+
+    def test_message_format_error_fallback(self, loader):
+        """FS-20.7: Format error returns unformatted message."""
+        msg = loader.get_message("server.start", "ko", unknown_key="value")
+        assert msg == "서버가 시작되었습니다"
+
+    def test_default_language_fallback_on_load_error(self, tmp_path):
+        """FS-20.1: Falls back to default lang when target missing."""
+        locales_dir = tmp_path / "locales"
+        locales_dir.mkdir()
+        ko_data = {"test": "value"}
+        (locales_dir / "ko.json").write_text(json.dumps(ko_data))
+        loader = MessageLoader(str(locales_dir), default_language="ko")
+        # xx doesn't exist, falls back to ko
+        msg = loader.get_message("test", "xx")
+        assert msg == "value"
+
+    def test_reload_language_failure(self, loader, tmp_path):
+        """FS-20.7: reload_language returns False on failure."""
+        # Remove the language file so reload fails
+        import os
+        ko_path = loader.locales_dir / "ko.json"
+        if ko_path.exists():
+            os.remove(str(ko_path))
+        result = loader.reload_language("ko")
+        assert result is False
+
+    def test_available_languages_no_dir(self, tmp_path):
+        """FS-20.2: get_available_languages returns [] when dir missing."""
+        # Create a MessageLoader, then test empty locales
+        locales_dir = tmp_path / "locales2"
+        locales_dir.mkdir()
+        ko_data = {"test": "val"}
+        (locales_dir / "ko.json").write_text(json.dumps(ko_data))
+        loader = MessageLoader(str(locales_dir))
+        # Remove dir and check
+        import shutil
+        shutil.rmtree(str(locales_dir))
+        langs = loader.get_available_languages()
+        assert langs == []

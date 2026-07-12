@@ -6,6 +6,7 @@ Handles server file downloads and updates via SteamCMD
 
 import os
 import threading
+import shlex
 import subprocess
 from pathlib import Path
 from typing import List
@@ -101,8 +102,8 @@ class SteamCMDManager:
         if not self.validate_steamcmd():
             return False
 
-        steamcmd_args = "+login anonymous +quit"
-        full_cmd = ["FEXBash", "-c", f"{self.steamcmd_script} {steamcmd_args}"]
+        warmup_parts = [str(self.steamcmd_script), "+login", "anonymous", "+quit"]
+        full_cmd = ["FEXBash", "-c", shlex.join(warmup_parts)]
 
         env = {
             **dict(os.environ),
@@ -140,7 +141,7 @@ class SteamCMDManager:
         # before running the real command.
         self._ensure_updated()
 
-        steamcmd_command = " ".join([str(self.steamcmd_script)] + commands)
+        steamcmd_command = shlex.join([str(self.steamcmd_script)] + commands)
         full_cmd = ["FEXBash", "-c", steamcmd_command]
 
         log_server_event(self.logger, "steamcmd_start", f"Executing: FEXBash -c '{steamcmd_command}'")

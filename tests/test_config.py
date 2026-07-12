@@ -1,6 +1,7 @@
 """Tests for the configuration system."""
 
 import os
+import yaml
 import pytest
 from pathlib import Path
 from unittest.mock import patch
@@ -284,3 +285,88 @@ class TestConfigLoaderBackwardsCompat:
         assert PalworldConfig is not None
         assert callable(get_config)
         assert callable(reload_config)
+
+
+class TestConfigLoaderEdgeCases:
+    """Additional edge-case tests for ConfigLoader coverage."""
+
+    def test_init_without_path_defaults_to_default_yaml(self):
+        """ConfigLoader() without path uses default.yaml location."""
+        loader = ConfigLoader()
+        assert loader.config_path.name == "default.yaml"
+        assert loader.config_path.parent.name == "config"
+
+    def test_yaml_parse_error_raises(self, tmp_path):
+        """Invalid YAML content raises YAMLError."""
+        config_file = tmp_path / "bad.yaml"
+        config_file.write_text("{invalid: yaml: broken", encoding='utf-8')
+        loader = ConfigLoader(config_file)
+        with pytest.raises(yaml.YAMLError, match="YAML file parsing error"):
+            loader.load_config()
+
+    def test_validate_config_invalid_rest_api_port(self, config_loader):
+        config = config_loader.load_config()
+        config.rest_api.port = 80
+        with pytest.raises(ValueError, match="Invalid REST API port"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_invalid_max_players(self, config_loader):
+        config = config_loader.load_config()
+        config.server.max_players = 0
+        with pytest.raises(ValueError, match="Invalid max players count"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_invalid_monitoring_mode(self, config_loader):
+        config = config_loader.load_config()
+        config.monitoring.mode = "unknown"
+        with pytest.raises(ValueError, match="Invalid monitoring mode"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_discord_enabled_no_webhook(self, config_loader):
+        config = config_loader.load_config()
+        config.discord.enabled = True
+        config.discord.webhook_url = ""
+        with pytest.raises(ValueError, match="Discord notifications enabled but webhook URL not set"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_invalid_log_format(self, config_loader):
+        config = config_loader.load_config()
+        config.server_startup.log_format = "binary"
+        with pytest.raises(ValueError, match="Invalid log format"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_invalid_query_port(self, config_loader):
+        config = config_loader.load_config()
+        config.server_startup.query_port = 99
+        with pytest.raises(ValueError, match="Invalid query port"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_invalid_worker_threads(self, config_loader):
+        config = config_loader.load_config()
+        config.server_startup.worker_threads_count = -1
+        with pytest.raises(ValueError, match="Invalid worker threads count"):
+            config_loader.validate_config(config)
+
+    def test_reload_config_not_initialized(self):
+        with patch('src.config.base._config_loader', None), \
+             patch('src.config.base._config_instance', None):
+            with pytest.raises(RuntimeError, match="Configuration loader not initialized"):
+                reload_config()
+
+    def test_convert_types_bool_edge_cases(self):
+        loader = ConfigLoader.__new__(ConfigLoader)
+        assert loader._convert_types("yes") is True
+        assert loader._convert_types("on") is True
+        assert loader._convert_types("1") is True
+        assert loader._convert_types("no") is False
+        assert loader._convert_types("off") is False
+        assert loader._convert_types("0") is False
+
+    def test_convert_types_int_negative(self):
+        loader = ConfigLoader.__new__(ConfigLoader)
+        assert loader._convert_types("-5") == -5
+
+    def test_convert_types_float_value_error(self):
+        loader = ConfigLoader.__new__(ConfigLoader)
+        result = loader._convert_types("not.a.float")
+        assert result == "not.a.float"

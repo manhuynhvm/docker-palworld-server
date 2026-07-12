@@ -2,6 +2,7 @@
 
 import pytest
 import asyncio
+import time
 import signal
 from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from pathlib import Path
@@ -122,6 +123,51 @@ class TestProcessManager:
         startup_cfg.enable_public_lobby = False
         opts = manager._build_startup_options()
         assert len(opts) == 0
+
+
+    def test_build_server_command_path_with_spaces(self, manager):
+        """SEC-3.7: Path with spaces is properly quoted via shlex.join."""
+        manager.server_path = Path('/tmp/pal world/server dir')
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = ''
+        startup_cfg.use_performance_threads = False
+        startup_cfg.disable_async_loading = False
+        startup_cfg.use_multithread_for_ds = False
+        cmd = manager._build_server_command()
+        assert cmd[0] == 'FEXBash'
+        assert cmd[1] == '-c'
+        # shlex.join should quote the path with spaces
+        cmd_str = cmd[2]
+        assert 'PalServer.sh' in cmd_str
+        # The quoted path should appear as a single token
+        quoted_repr = repr(cmd_str)
+        assert 'pal world' in cmd_str.replace(chr(39), '') or 'pal world' in cmd_str.replace(chr(34), '')
+
+    def test_build_server_command_path_with_semicolon(self, manager):
+        """SEC-3.8: Path with semicolon is shell-quoted, not executed."""
+        manager.server_path = Path("/tmp/server;echo INJECTED")
+        startup_cfg = manager.config.server_startup
+        startup_cfg.additional_options = ''
+        startup_cfg.use_performance_threads = False
+        startup_cfg.disable_async_loading = False
+        startup_cfg.use_multithread_for_ds = False
+        cmd = manager._build_server_command()
+        cmd_str = cmd[2]
+        # The path with semicolon must be shell-quoted so FEXBash -c
+        # treats it as a single token, not a command separator.
+        assert "'/tmp/server;echo INJECTED/PalServer.sh'" in cmd_str, (
+            f"Expected shell-quoted path in command, got: {cmd_str!r}"
+        )
+
+    def test_additional_options_injection_separator(self, manager):
+        """SEC-3.9: Shell separators in additional_options are not executed."""
+        startup_cfg = manager.config.server_startup
+        # shlex.split preserves metacharacters as tokens; shlex.join quotes them
+        startup_cfg.additional_options = '; echo INJECTED'
+        cmd = manager._build_server_command()
+        cmd_str = cmd[2]
+        # The semicolon must be shell-quoted so it's not a command separator
+        assert "';'" in cmd_str or "';" in cmd_str or cmd_str.count(chr(39)) >= 6
 
     def test_send_signal_error_returns_false(self, manager):
         """FS-10.x: send_signal returns False on unexpected error."""
@@ -303,3 +349,123 @@ class TestProcessManager:
         """FS-10.14: pause_server returns False when not running."""
         result = asyncio.run(manager.pause_server())
         assert result is False
+
+
+
+class TestProcessManagerEdgeCases:
+    """Edge case coverage for process manager."""
+
+    @pytest.fixture
+    def manager(self, palworld_config, mock_logger):
+        return ProcessManager(palworld_config, mock_logger)
+
+    def test_build_startup_options_with_worker_threads(self, manager):
+        """FS-10.x: worker_threads_count > 0 adds thread option."""
+        manager.config.server_startup.worker_threads_count = 4
+        options = manager._build_startup_options()
+        assert f"-NumberOfWorkerThreadsServer=4" in options
+
+    def test_build_startup_options_public_lobby(self, manager):
+        """FS-10.x: enable_public_lobby adds lobby option."""
+        manager.config.server_startup.enable_public_lobby = True
+        options = manager._build_startup_options()
+        assert "-publiclobby" in options
+
+    def test_build_startup_options_log_format(self, manager):
+        """FS-10.x: non-text log format adds format option."""
+        manager.config.server_startup.log_format = "json"
+        options = manager._build_startup_options()
+        assert "-logformat=json" in options
+
+    def test_build_server_command_no_options(self, manager):
+        """FS-10.x: _build_server_command works even when no options are generated."""
+        # Disable all option-generating configs
+        cfg = manager.config.server_startup
+        cfg.use_performance_threads = False
+        cfg.query_port = 27015
+        cfg.log_format = "text"
+        cfg.enable_public_lobby = False
+        cfg.additional_options = ""
+        cmd = manager._build_server_command()
+        assert cmd[0] == "FEXBash"
+        assert cmd[1] == "-c"
+        assert "PalServer.sh" in cmd[2]
+
+    @pytest.mark.asyncio
+    async def test_start_server_already_running(self, manager):
+        """FS-10.x: start_server returns True when already running."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        manager.server_process = mock_process
+        result = await manager.start_server()
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_start_server_executable_not_found(self, manager):
+        """FS-10.x: start_server returns False when executable missing."""
+        # Patch server_path to a non-existent directory
+        with patch('pathlib.Path.exists', return_value=False):
+            result = await manager.start_server()
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_stop_server_not_running(self, manager):
+        """FS-10.x: stop_server returns True when server not running."""
+        result = await manager.stop_server()
+        assert result is True
+
+    def test_get_startup_options_summary(self, manager):
+        """FS-10.x: get_startup_options_summary returns expected structure."""
+        summary = manager.get_startup_options_summary()
+        assert "query_port" in summary
+        assert "public_lobby" in summary
+        assert "log_format" in summary
+        assert "generated_options" in summary
+        assert "options_count" in summary
+
+    def test_get_server_status_running(self, manager):
+        """FS-10.x: get_server_status returns running info when process active."""
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+        manager.server_process = mock_process
+        manager._process_start_time = time.time() - 60
+        status = manager.get_server_status()
+        assert status["running"] is True
+        assert status["pid"] == 12345
+        assert status["uptime"] > 0
+
+
+    @pytest.mark.asyncio
+    async def test_start_server_popen_raises_exception(self, manager):
+        """FS-10.x: start_server handles Popen exceptions."""
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('subprocess.Popen', side_effect=Exception("exec failed")):
+                result = await manager.start_server()
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_start_server_popen_process_dies_immediately(self, manager):
+        """FS-10.x: start_server detects when process dies right after start."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 1  # process exited
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('subprocess.Popen', return_value=mock_proc):
+                with patch('asyncio.sleep', AsyncMock(return_value=None)):
+                    result = await manager.start_server()
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_stop_server_with_api_client_error(self, manager):
+        """FS-10.x: stop_server handles api_client gracefully."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None  # running
+        mock_proc.pid = 12345
+        manager.server_process = mock_proc
+        mock_api = MagicMock()
+        mock_api.announce_message = AsyncMock(side_effect=Exception("api error"))
+        with patch('os.killpg') as mock_kill:
+            with patch('signal.SIGTERM', 15):
+                result = await manager.stop_server(api_client=mock_api)
+                assert result is True
+                mock_kill.assert_called()

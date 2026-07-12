@@ -72,10 +72,23 @@ class TestPalworldServerManager:
     @pytest.mark.asyncio
     async def test_server_startup_success(self, manager):
         """FS-13.1.4: Full startup succeeds (wait_for_api_ready mocked)."""
-        with patch('src.server_manager.wait_for_api_ready', new=AsyncMock(return_value=True)):
+        mock_readiness = AsyncMock(return_value=True)
+        with patch('src.server_manager.wait_for_api_ready', new=mock_readiness):
             result = await manager.start_server_with_verification()
         assert result is True
         assert manager._startup_completed is True
+        mock_readiness.assert_awaited_once_with(manager, max_wait_time=60, check_interval=2)
+
+    @pytest.mark.asyncio
+    async def test_server_startup_rest_api_disabled(self, manager):
+        """FS-13.1.4: REST API disabled skips readiness check."""
+        manager.config.rest_api.enabled = False
+        mock_readiness = AsyncMock(return_value=True)
+        with patch('src.server_manager.wait_for_api_ready', new=mock_readiness):
+            result = await manager.start_server_with_verification()
+        assert result is True
+        assert manager._startup_completed is True
+        mock_readiness.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_server_startup_lifecycle_fails(self, manager):

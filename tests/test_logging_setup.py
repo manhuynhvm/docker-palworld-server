@@ -134,3 +134,47 @@ class TestConvenienceFunctions:
         logger.info.assert_called_once()
         args, kwargs = logger.info.call_args
         assert kwargs["backup_file"] == "backup.tar.gz"
+
+
+    def test_formats_with_stdout(self):
+        renderer = CustomConsoleRenderer()
+        event_dict: EventDict = {
+            "level": "info",
+            "event": "server output",
+            "stdout": "line1\nline2"
+        }
+        result = renderer(None, "test", event_dict)
+        assert "stdout" in result
+        assert "line1" in result
+        assert "line2" in result
+
+    def test_formats_with_stderr(self):
+        renderer = CustomConsoleRenderer()
+        event_dict: EventDict = {
+            "level": "error",
+            "event": "error output",
+            "stderr": "traceback line1\ntraceback line2"
+        }
+        result = renderer(None, "test", event_dict)
+        assert "stderr" in result
+        assert "traceback line1" in result
+
+    def test_formats_with_env_vars(self):
+        renderer = CustomConsoleRenderer()
+        event_dict: EventDict = {
+            "level": "info",
+            "event": "config",
+            "env_vars": {"SERVER_NAME": "Test", "PORT": "8211"}
+        }
+        result = renderer(None, "test", event_dict)
+        assert "env_vars" in result
+        assert "SERVER_NAME" in result
+        assert "PORT" in result
+
+    def test_no_extra_fields_same(self):
+        renderer = CustomConsoleRenderer()
+        event_dict: EventDict = {"level": "warning", "event": "simple"}
+        result = renderer(None, "test", event_dict)
+        assert "[WARNING]" in result
+        assert "simple" in result
+        assert "stdout" not in result

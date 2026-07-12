@@ -69,16 +69,16 @@ class ProcessManager(IProcessManager):
         """Build complete server command with dynamic options"""
         server_executable = self.server_path / "PalServer.sh"
         startup_options = self._build_startup_options()
-        
+
+        # Always shlex.join() to prevent shell injection from path or options
+        command = shlex.join([str(server_executable), *startup_options])
         if startup_options:
-            command = f"{server_executable} {shlex.join(startup_options)}"
-            log_server_event(self.logger, "server_command_build", 
-                           f"Server command with options: {shlex.join(startup_options)}")
+            log_server_event(self.logger, "server_command_build",
+                           "Server command with options: " + shlex.join(startup_options))
         else:
-            command = str(server_executable)
-            log_server_event(self.logger, "server_command_build", 
+            log_server_event(self.logger, "server_command_build",
                            "Server command without additional options")
-        
+
         return ["FEXBash", "-c", command]
     
     async def start_server(self) -> bool:

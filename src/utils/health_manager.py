@@ -5,6 +5,7 @@ Continuous monitoring with automatic recovery and alerting
 """
 
 import asyncio
+import inspect
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Callable
@@ -170,7 +171,7 @@ class HealthManager:
         try:
             for callback in self.recovery_callbacks:
                 try:
-                    if asyncio.iscoroutinefunction(callback):
+                    if inspect.iscoroutinefunction(callback):
                         await callback(health_result)
                     else:
                         callback(health_result)

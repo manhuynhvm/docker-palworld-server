@@ -1,10 +1,16 @@
 """Tests for the metrics collector (log-based + Prometheus)."""
 
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+import asyncio
+import time
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from src.monitoring.metrics_collector import (
     MetricsCollector, SystemMetrics, GameMetrics
 )
+
+
+async def _noop():
+    pass
 
 
 class TestMetricsCollector:
@@ -144,8 +150,7 @@ class TestMetricsCollector:
         """FS-17.9: Start/stop collection lifecycle (logs mode)."""
         collector.enable_prometheus = False
 
-        import asyncio
-        with patch.object(collector, '_collection_loop', return_value=asyncio.sleep(0)):
+        with patch.object(collector, '_collection_loop', side_effect=_noop):
             with patch('src.monitoring.metrics_collector.log_server_event') as mock_log:
                 asyncio.run(collector.start_collection())
                 assert collector._running is True
@@ -161,8 +166,7 @@ class TestMetricsCollector:
         collector = MetricsCollector(palworld_config)
         collector.enable_prometheus = True
 
-        import asyncio
-        with patch.object(collector, '_collection_loop', return_value=asyncio.sleep(0)):
+        with patch.object(collector, '_collection_loop', side_effect=_noop):
             asyncio.run(collector.start_collection())
             mock_start_http.assert_called_once_with(8080)
             assert collector._prometheus_server_started is True
@@ -204,16 +208,14 @@ class TestMetricsCollector:
         )
 
         with patch.object(collector, '_update_prometheus_game') as mock_update:
-            import asyncio
             asyncio.run(collector.process_game_metrics(metrics))
             mock_update.assert_called_once_with(metrics)
 
     def test_serial_start_stop_safe(self, collector):
         """FS-17.14: Calling start/stop multiple times is safe."""
         collector.enable_prometheus = False
-        import asyncio
 
-        with patch.object(collector, '_collection_loop', return_value=asyncio.sleep(0)):
+        with patch.object(collector, '_collection_loop', side_effect=_noop):
             # Start twice - second should warn
             asyncio.run(collector.start_collection())
             with patch.object(collector.logger, 'warning') as mock_warn:
@@ -224,3 +226,208 @@ class TestMetricsCollector:
             # Stop twice - second should no-op
             asyncio.run(collector.stop_collection())
             assert collector._running is False
+
+
+
+class TestMetricsCollectorEdgeCases:
+    """Edge case coverage for metrics collector."""
+
+    @pytest.fixture
+    def collector(self, palworld_config):
+        return MetricsCollector(palworld_config)
+
+    @patch('src.monitoring.metrics_collector.start_http_server')
+    def test_start_collection_prometheus_server_fails(self, mock_start_http, palworld_config):
+        """FS-17.x: start_collection handles Prometheus HTTP server start failure."""
+        mock_start_http.side_effect = Exception("port in use")
+        palworld_config.monitoring.mode = "prometheus"
+        collector = MetricsCollector(palworld_config)
+        # _collection_loop is mocked to prevent actual async execution
+        with patch.object(collector, '_collection_loop', side_effect=_noop):
+            asyncio.run(collector.start_collection())
+            # Logger should have been called with the error
+            assert collector._prometheus_server_started is False
+
+    @pytest.mark.asyncio
+    async def test_stop_collection_with_prometheus_enabled(self, collector):
+        """FS-17.x: stop_collection with collection_task and Prometheus enabled."""
+        collector.enable_prometheus = True
+        collector._running = True
+        collector._collection_task = asyncio.create_task(asyncio.sleep(9999))
+        await collector.stop_collection()
+        assert collector._running is False
+        assert collector._collection_task is not None
+
+    def test_get_metrics_collector_singleton(self, palworld_config):
+        """FS-17.x: get_metrics_collector returns singleton instance."""
+        from src.monitoring.metrics_collector import get_metrics_collector, _metrics_collector
+        # Reset the module-level singleton
+        import src.monitoring.metrics_collector as mc
+        old = mc._metrics_collector
+        mc._metrics_collector = None
+        try:
+            instance1 = get_metrics_collector(palworld_config)
+            instance2 = get_metrics_collector()
+            assert instance1 is instance2
+            assert isinstance(instance1, MetricsCollector)
+        finally:
+            mc._metrics_collector = old
+
+    @patch('psutil.cpu_percent')
+    @patch('psutil.virtual_memory')
+    @patch('psutil.disk_usage')
+    @patch('psutil.net_io_counters')
+    def test_get_current_metrics_summary_error(self, mock_net, mock_disk, mock_mem, mock_cpu, collector):
+        """FS-17.x: get_current_metrics_summary handles psutil exception."""
+        mock_cpu.side_effect = Exception("permission denied")
+        result = collector.get_current_metrics_summary()
+        assert "error" in result
+
+    @patch('psutil.getloadavg')
+    @pytest.mark.asyncio
+    async def test_collect_system_metrics_load_avg_fallback(self, mock_loadavg, collector):
+        """FS-17.x: _collect_system_metrics handles getloadavg AttributeError."""
+        mock_loadavg.side_effect = AttributeError("not available")
+        with patch('psutil.cpu_percent', return_value=30.0), \
+             patch('psutil.virtual_memory') as mock_mem, \
+             patch('psutil.disk_usage') as mock_disk, \
+             patch('psutil.net_io_counters') as mock_net:
+            mock_mem.return_value.used = 4 * 1024**3
+            mock_mem.return_value.total = 16 * 1024**3
+            mock_mem.return_value.percent = 40.0
+            mock_disk.return_value.used = 50 * 1024**3
+            mock_disk.return_value.total = 200 * 1024**3
+            mock_net.return_value.bytes_sent = 1000
+            mock_net.return_value.bytes_recv = 2000
+
+            metrics = await collector._collect_system_metrics()
+            assert metrics.load_average == []  # empty list on AttributeError
+
+    @pytest.mark.asyncio
+    async def test_collection_loop_runs_one_iteration(self, collector):
+        """FS-17.x: _collection_loop runs one iteration with Prometheus enabled."""
+        collector.config.monitoring.metrics_interval = 0.01
+        async def mock_collect():
+            return SystemMetrics(
+                cpu_percent=30.0, memory_usage_gb=4.0, memory_percent=40.0,
+                disk_usage_gb=50.0, disk_percent=30.0,
+                network_bytes_sent=1000, network_bytes_recv=2000
+            )
+        collector._collect_system_metrics = mock_collect
+        collector._process_system_metrics = AsyncMock()
+        collector.enable_prometheus = True
+        collector._running = True
+
+        async def stop_soon():
+            await asyncio.sleep(0.05)
+            collector._running = False
+
+        await asyncio.gather(collector._collection_loop(), stop_soon())
+        collector._process_system_metrics.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_collection_loop_exception_handling(self, collector):
+        """FS-17.x: _collection_loop handles exception and continues."""
+        collector.config.monitoring.metrics_interval = 0.01
+
+        async def mock_collect():
+            if not hasattr(mock_collect, 'call_count'):
+                mock_collect.call_count = 0
+            mock_collect.call_count += 1
+            if mock_collect.call_count == 1:
+                raise Exception("collect failed")
+            return SystemMetrics(
+                cpu_percent=30.0, memory_usage_gb=4.0, memory_percent=40.0,
+                disk_usage_gb=50.0, disk_percent=30.0,
+                network_bytes_sent=1000, network_bytes_recv=2000
+            )
+
+        collector._collect_system_metrics = mock_collect
+        collector._process_system_metrics = AsyncMock()
+        collector.enable_prometheus = True
+        collector._running = True
+
+        real_sleep = asyncio.sleep
+        async def sleep_side(duration):
+            await real_sleep(0)
+
+        with patch.object(collector.logger, 'error') as mock_log:
+            with patch('asyncio.sleep', side_effect=sleep_side):
+                async def stop_soon():
+                    collector._running = False
+                await asyncio.gather(collector._collection_loop(), stop_soon())
+                mock_log.assert_called_with("Metrics collection error", error='collect failed')
+
+
+    @pytest.mark.asyncio
+    async def test_collection_loop_cancellation(self, collector):
+        """FS-17.x: _collection_loop handles CancelledError cleanly."""
+        collector.config.monitoring.metrics_interval = 9999
+        collector._running = True
+        # Run the loop as a task and cancel it immediately
+        loop_task = asyncio.create_task(collector._collection_loop())
+        await asyncio.sleep(0.01)
+        loop_task.cancel()
+        try:
+            await loop_task
+        except asyncio.CancelledError:
+            pass
+        # If we reach here, CancelledError was caught inside the loop (break)
+        # and the loop method returned gracefully
+        assert loop_task.cancelled() is False  # caught CancelledError internally
+
+
+    def test_collect_game_metrics_sync_world_size(self, collector, tmp_path):
+        """FS-17.x: collect_game_metrics_sync calculates world save size."""
+        from pathlib import Path
+        saved_dir = tmp_path / "Pal" / "Saved"
+        saved_dir.mkdir(parents=True)
+        (saved_dir / "world.sav").write_text("x" * 1024 * 1024)
+
+        # Set server_dir to tmp_path and verify the path construction
+        collector.config.paths.server_dir = Path(str(tmp_path))
+        save_dir = collector.config.paths.server_dir / "Pal" / "Saved"
+        assert save_dir.exists(), f"save_dir does not exist: {save_dir}"
+        collector.server_start_time = time.time() - 3600
+
+        players = [{"name": "P1"}]
+        metrics = collector.collect_game_metrics_sync(
+            players_data=players,
+            server_info={"tps": 19.5}
+        )
+        assert metrics.players_online == 1
+        assert metrics.tps == 19.5
+        assert metrics.world_save_size_mb > 0.0, f"world_size was {metrics.world_save_size_mb}"
+
+    def test_record_api_call_with_status_code(self, collector):
+        """FS-17.x: record_api_call works with various status codes."""
+        collector.record_api_call("/info", 200, 150.0)
+        collector.record_api_call("/error", 500, 50.0)
+        # Should not raise
+
+    def test_collect_game_metrics_sync_with_data(self, collector):
+        """FS-17.x: collect_game_metrics_sync with player data."""
+        from src.monitoring.metrics_collector import GameMetrics
+        players = [{"name": "P1"}, {"name": "P2"}, {"name": "P3"}]
+        metrics = collector.collect_game_metrics_sync(
+            players_data=players,
+            server_info={"tps": 19.5}
+        )
+        assert metrics.players_online == 3
+        assert metrics.tps == 19.5
+
+    def test_record_server_event_prometheus_enabled(self, collector):
+        """FS-17.x: record_server_event Prometheus paths with mode='prometheus'."""
+        collector.enable_prometheus = True
+        collector.record_server_event("restart", "Server restarting")
+        collector.record_server_event("stop", "Server stopping")
+        collector.record_server_event("start", "Server started")
+        # Should not raise
+
+    def test_record_player_event_prometheus_enabled(self, collector):
+        """FS-17.x: record_player_event Prometheus paths."""
+        collector.enable_prometheus = True
+        collector.record_player_event("join", "Player1", 3)
+        collector.record_player_event("leave", "Player1", 2)
+        collector.record_player_event("unknown", "Player1", 2)
+        # Should not raise

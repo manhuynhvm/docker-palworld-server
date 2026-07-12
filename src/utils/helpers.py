@@ -6,6 +6,7 @@ Helper functions used across the Palworld server management system
 
 import os
 import asyncio
+import inspect
 import functools
 from typing import Any, Callable, TypeVar, Union
 from pathlib import Path
@@ -181,7 +182,7 @@ async def safe_cleanup(coro_or_func: Union[Callable, Any], *args, **kwargs) -> N
         **kwargs: Keyword arguments to pass
     """
     try:
-        if asyncio.iscoroutinefunction(coro_or_func):
+        if inspect.iscoroutinefunction(coro_or_func):
             await coro_or_func(*args, **kwargs)
         else:
             coro_or_func(*args, **kwargs)

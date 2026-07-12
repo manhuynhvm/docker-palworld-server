@@ -60,21 +60,21 @@ class EventDispatcher:
             
             async with self.discord_notifier as notifier:
                 if event.event_type == ServerEventType.STATUS_CHANGED:
-                    if "started" in event.message.lower():
-                        await notifier.notify_server_start(language=self._language)
-                        self.logger.info("Discord notification sent: server started")
-                    elif "stopped" in event.message.lower():
-                        await notifier.notify_server_stop(
-                            event.message, 
-                            language=self._language
-                        )
-                        self.logger.info("Discord notification sent: server stopped")
-                    elif "restarted" in event.message.lower():
+                    if "restarted" in event.message.lower():
                         await notifier.notify_error(
                             f"Server unexpectedly restarted: {event.details}",
                             language=self._language
                         )
                         self.logger.info("Discord notification sent: unexpected restart")
+                    elif "started" in event.message.lower():
+                        await notifier.notify_server_start(language=self._language)
+                        self.logger.info("Discord notification sent: server started")
+                    elif "stopped" in event.message.lower():
+                        await notifier.notify_server_stop(
+                            event.message,
+                            language=self._language
+                        )
+                        self.logger.info("Discord notification sent: server stopped")
                         
                 elif event.event_type == ServerEventType.HEALTH_WARNING:
                     await notifier.notify_error(

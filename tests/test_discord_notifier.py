@@ -80,3 +80,125 @@ class TestDiscordNotifier:
         palworld_config.discord.mention_role = "123456"
         n = DiscordNotifier(palworld_config)
         assert n.mention_role == "123456"
+
+    @pytest.mark.asyncio
+    async def test_send_notification_disabled(self, notifier):
+        """FS-19.1: _send_notification returns False when disabled."""
+        notifier.enabled = False
+        result = await notifier._send_notification(
+            "server_start", "server.start"
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_notification_event_disabled(self, notifier):
+        """FS-19.1: _send_notification returns False when event type disabled."""
+        notifier.events = {"server_start": False}
+        result = await notifier._send_notification(
+            "server_start", "server.start"
+        )
+        assert result is False
+
+    def test_get_event_status(self, notifier):
+        """FS-19.1: get_event_status returns expected structure."""
+        status = notifier.get_event_status()
+        assert "discord_enabled" in status
+        assert "webhook_configured" in status
+        assert "events" in status
+        assert status["discord_enabled"] is True
+
+    @pytest.mark.asyncio
+    async def test_notify_server_start_disabled_event(self, notifier):
+        """FS-19.1: notify_server_start returns False when event disabled."""
+        notifier.events = {"server_start": False}
+        result = await notifier.notify_server_start()
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_notify_server_stop(self, notifier):
+        """FS-19.1: notify_server_stop dispatches."""
+        mock_response = MagicMock()
+        mock_response.status = 204
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        notifier.session.post = MagicMock(return_value=cm)
+        result = await notifier.notify_server_stop(reason="Maintenance")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_notify_player_join(self, notifier):
+        """FS-19.1: notify_player_join dispatches."""
+        mock_response = MagicMock()
+        mock_response.status = 204
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        notifier.session.post = MagicMock(return_value=cm)
+        result = await notifier.notify_player_join("Player1", 5)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_notify_player_leave(self, notifier):
+        """FS-19.1: notify_player_leave dispatches."""
+        mock_response = MagicMock()
+        mock_response.status = 204
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        notifier.session.post = MagicMock(return_value=cm)
+        result = await notifier.notify_player_leave("Player1", 4)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_notify_backup_complete(self, notifier):
+        """FS-19.1: notify_backup_complete dispatches."""
+        mock_response = MagicMock()
+        mock_response.status = 204
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        notifier.session.post = MagicMock(return_value=cm)
+        result = await notifier.notify_backup_complete()
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_notify_error(self, notifier):
+        """FS-19.1: notify_error dispatches."""
+        mock_response = MagicMock()
+        mock_response.status = 204
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        notifier.session.post = MagicMock(return_value=cm)
+        result = await notifier.notify_error("Server error")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_webhook_no_session(self, notifier):
+        """FS-19.1: _send_webhook returns False when session is None."""
+        notifier.session = None
+        result = await notifier._send_webhook("Test", NotificationLevel.INFO)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_webhook_exception(self, notifier):
+        """FS-19.1: _send_webhook exception is caught."""
+        notifier.session.post = MagicMock(side_effect=RuntimeError("Network error"))
+        result = await notifier._send_webhook("Test", NotificationLevel.INFO)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_webhook_with_mention_role_error(self, notifier):
+        """FS-19.1: Mention role included for error level."""
+        notifier.mention_role = "123456"
+        mock_response = MagicMock()
+        mock_response.status = 204
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=mock_response)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        notifier.session.post = MagicMock(return_value=cm)
+        result = await notifier._send_webhook(
+            "Critical error", NotificationLevel.CRITICAL
+        )
+        assert result is True

@@ -236,9 +236,9 @@ class PalworldServerManager:
                         "Starting Palworld server file download")
         
         commands = [
-            f"+force_install_dir {self.config.paths.server_dir}",
+            "+force_install_dir", str(self.config.paths.server_dir),
             "+login", "anonymous",
-            f"+app_update {self.config.steamcmd.app_id}"
+            "+app_update", str(self.config.steamcmd.app_id)
         ]
         
         if self.config.steamcmd.validate:

@@ -78,6 +78,7 @@ class TestEventDispatcher:
         )
         await dispatcher.handle_server_event(event)
         dispatcher.discord_notifier.notify_server_stop.assert_awaited()
+        dispatcher.discord_notifier.notify_error.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_warning_discord(self, dispatcher):
@@ -111,3 +112,95 @@ class TestEventDispatcher:
         )
         await dispatcher.handle_player_event(event)
         dispatcher.discord_notifier.notify_player_join.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_server_restart_discord(self, dispatcher):
+        """FS-13.2.5: Unexpected restart dispatched as error."""
+        from src.monitoring.server_monitor import ServerEventType
+        event = ServerEvent(
+            event_type=ServerEventType.STATUS_CHANGED,
+            message="Server restarted unexpectedly",
+            details={'reason': 'crash'},
+            timestamp=100.0
+        )
+        await dispatcher.handle_server_event(event)
+        dispatcher.discord_notifier.notify_error.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_performance_issue_discord(self, dispatcher):
+        """FS-13.2.5: Performance issue dispatched."""
+        from src.monitoring.server_monitor import ServerEventType
+        event = ServerEvent(
+            event_type=ServerEventType.PERFORMANCE_ISSUE,
+            message="High CPU usage",
+            details={},
+            timestamp=100.0
+        )
+        await dispatcher.handle_server_event(event)
+        dispatcher.discord_notifier.notify_error.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_error_event_discord(self, dispatcher):
+        """FS-13.2.5: Error event dispatched."""
+        await dispatcher.handle_error_event("Test error", {"code": 500})
+        dispatcher.discord_notifier.notify_error.assert_awaited_with(
+            "Test error", language=dispatcher._language
+        )
+
+    @pytest.mark.asyncio
+    async def test_error_event_discord_disabled(self, dispatcher):
+        """FS-13.2.5: Error event skipped when Discord disabled."""
+        dispatcher._discord_enabled = False
+        await dispatcher.handle_error_event("Test error")
+        dispatcher.discord_notifier.notify_error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_backup_discord_disabled(self, dispatcher):
+        """FS-13.2.5: Backup event skipped when Discord disabled."""
+        dispatcher._discord_enabled = False
+        await dispatcher.handle_backup_completion({"file": "backup.tar.gz"})
+        dispatcher.discord_notifier.notify_backup_complete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_player_event_exception_logged(self, dispatcher):
+        """FS-13.2.5: Exception in player event is logged, not propagated."""
+        dispatcher.discord_notifier.__aenter__ = AsyncMock(
+            side_effect=RuntimeError("Discord failure")
+        )
+        event = PlayerEvent(
+            event_type=PlayerEventType.JOINED,
+            player_name="Player1",
+            player_count=1,
+            timestamp=100.0
+        )
+        # Should not raise
+        await dispatcher.handle_player_event(event)
+
+    @pytest.mark.asyncio
+    async def test_server_event_exception_logged(self, dispatcher):
+        """FS-13.2.5: Exception in server event is logged, not propagated."""
+        dispatcher.discord_notifier.__aenter__ = AsyncMock(
+            side_effect=RuntimeError("Discord failure")
+        )
+        event = ServerEvent(
+            event_type=ServerEventType.STATUS_CHANGED,
+            message="Server started",
+            details={},
+            timestamp=100.0
+        )
+        await dispatcher.handle_server_event(event)
+
+    @pytest.mark.asyncio
+    async def test_server_event_not_restart_different_message(self, dispatcher):
+        """FS-13.2.5: Non-start/stop/restart message is not dispatched."""
+        event = ServerEvent(
+            event_type=ServerEventType.STATUS_CHANGED,
+            message="Server status update - running",
+            details={},
+            timestamp=100.0
+        )
+        await dispatcher.handle_server_event(event)
+        # No notification methods should be called
+        dispatcher.discord_notifier.notify_server_start.assert_not_called()
+        dispatcher.discord_notifier.notify_server_stop.assert_not_called()
+        dispatcher.discord_notifier.notify_error.assert_not_called()
