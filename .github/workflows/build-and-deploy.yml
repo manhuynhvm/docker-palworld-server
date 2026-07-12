@@ -742,9 +742,9 @@ jobs:
             - name: 📝 Generate release notes with categorized commit history
               id: release-notes
               run: |
-                  # Get the tag of the previous release to compare commits
-                  # We use the most recent tag that IS NOT the one we are about to create
-                  PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ env.BUILD_VERSION }}" | head -n 1 2>/dev/null)
+                  # Get the newest semver release tag before the current release.
+                  # Non-release tags (for example, latest) are ignored.
+                  PREV_TAG=$(scripts/find_previous_release_tag.sh "${{ env.BUILD_VERSION }}")
 
                   if [ -z "$PREV_TAG" ]; then
                     echo "🔍 No previous tag found, using initial commit"
