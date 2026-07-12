@@ -414,6 +414,46 @@ class TestProcessManagerEdgeCases:
         result = await manager.stop_server()
         assert result is True
 
+    @pytest.mark.asyncio
+    async def test_stop_server_handles_process_cleared_after_running_check(self, manager):
+        """stop_server treats a concurrently cleared process as already stopped."""
+        mock_process = MagicMock()
+        manager.server_process = mock_process
+
+        def report_running_then_clear_process():
+            manager.server_process = None
+            return True
+
+        with patch.object(
+            manager,
+            "is_server_running",
+            side_effect=report_running_then_clear_process,
+        ):
+            result = await manager.stop_server()
+
+        assert result is True
+        mock_process.wait.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_signal_handles_process_cleared_after_running_check(self, manager):
+        """send_signal returns False when the process disappears during the check."""
+        mock_process = MagicMock()
+        manager.server_process = mock_process
+
+        def report_running_then_clear_process():
+            manager.server_process = None
+            return True
+
+        with patch.object(
+            manager,
+            "is_server_running",
+            side_effect=report_running_then_clear_process,
+        ), patch("os.killpg") as mock_killpg:
+            result = await manager.send_signal(signal.SIGTERM)
+
+        assert result is False
+        mock_killpg.assert_not_called()
+
     def test_get_startup_options_summary(self, manager):
         """FS-10.x: get_startup_options_summary returns expected structure."""
         summary = manager.get_startup_options_summary()
