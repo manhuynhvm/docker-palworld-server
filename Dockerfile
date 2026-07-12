@@ -50,7 +50,7 @@ RUN DOWNLOAD_URL=$(curl -s https://api.github.com/repos/itzg/rcon-cli/releases/l
 FROM supersunho/steamcmd-arm64:latest
 
 LABEL maintainer="supersunho" \
-      version="1.0.0" \
+      version="1.1.3" \
       description="Palworld Dedicated Server with FEX emulation for ARM64" \
       architecture="arm64" \
       base-image="supersunho/steamcmd-arm64:latest"
