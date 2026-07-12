@@ -147,22 +147,10 @@ exclude_lines = [
 ]
 show_missing = true
 # TODO: Raise to 75 once sufficient tests are added
-fail_under = 67
+fail_under = 75
 
 [tool.coverage.html]
 directory = "coverage_html"
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
 
 # Flake8 configuration
 [tool.flake8]

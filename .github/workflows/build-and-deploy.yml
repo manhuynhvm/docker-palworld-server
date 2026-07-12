@@ -71,128 +71,42 @@ jobs:
             build_version_base: ${{ steps.get-version.outputs.build_version_base }}
 
         steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
             - name: 🔍 Determine source and build versions
               id: get-version
               env:
                   SOURCE_VERSION_INPUT: ${{ github.event.inputs.source_version || '' }}
                   BUILD_VERSION_INPUT: ${{ github.event.inputs.build_version || '' }}
               run: |
-                  # =================================================================
-                  # Step 1: Get Palworld Server source version
-                  # =================================================================
+                  # Use extracted, testable validator script
+                  OUTPUT=$(scripts/validate_ci_versions.sh \
+                    "$SOURCE_VERSION_INPUT" "$BUILD_VERSION_INPUT")
 
-                  if [ "$SOURCE_VERSION_INPUT" = "latest" ] || [ -z "$SOURCE_VERSION_INPUT" ]; then
-                    echo "🔍 Using latest Palworld Server version"
-                    SOURCE_VERSION="latest"
-                    echo "📦 Using latest version as source: $SOURCE_VERSION"
-                  else
-                    SOURCE_VERSION="$SOURCE_VERSION_INPUT"
-                    echo "📌 Using specified source version: $SOURCE_VERSION"
-                  fi
-
-                  # =================================================================
-                  # Step 2: Determine build version (custom or fallback to source)
-                  # =================================================================
-
-                  if [ -n "$BUILD_VERSION_INPUT" ]; then
-                    BUILD_VERSION="$BUILD_VERSION_INPUT"
-                    echo "🏷️ Using custom build version: $BUILD_VERSION"
-                  else
-                    BUILD_VERSION="$SOURCE_VERSION"
-                    echo "🏷️ Using source version as build version: $BUILD_VERSION"
-                  fi
-
-                  # =================================================================
-                  # Step 3: Validate version inputs (security gate)
-                  # =================================================================
-
-                  validate_version() {
-                    local input="$1"
-                    local label="$2"
-
-                    if [ -z "$input" ]; then
-                      return 0
+                  # Write each output line to GITHUB_OUTPUT
+                  echo "$OUTPUT" | while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                      echo "$line" >> "$GITHUB_OUTPUT"
                     fi
+                  done
 
-                    # Reject shell metacharacters, quotes, newlines
-                    case "$input" in
-                      *\&*|*\;*|*\|*|*\$*|*\`*|*\(*|*\)*|*\{*|*\}*|*\<*|*\>*|*\[*|*\]*|*'*|*\n*|*\r*|*\t*|*"*)
-                        echo "❌ ERROR: ${label}='${input}' contains forbidden shell metacharacters"
-                        exit 1
-                        ;;
-                    esac
-
-                    # Reject whitespace
-                    if echo "$input" | grep -q '[[:space:]]'; then
-                      echo "❌ ERROR: ${label}='${input}' contains whitespace"
-                      exit 1
-                    fi
-
-                    # Allow: latest, v1, v1.2, v1.2.3, with optional -suffix
-                    if echo "$input" | grep -qE '^[vV]?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[a-zA-Z0-9]+)?$'; then
-                      return 0
-                    fi
-
-                    echo "❌ ERROR: ${label}='${input}' is not a valid version string."
-                    echo "   Allowed: latest, v1.0.0, 1.0.0, 1.0.0-beta, 1.0.0-rc1"
-                    exit 1
-                  }
-
-                  if [ -n "$BUILD_VERSION" ]; then
-                    validate_version "$BUILD_VERSION" "build_version"
-                  fi
-
-                  if [ "$SOURCE_VERSION" != "latest" ]; then
-                    validate_version "$SOURCE_VERSION" "source_version"
-                  fi
-
-                  echo "✅ Version validation passed"
-
-                  # =================================================================
-                  # Step 4: Sanitize outputs (single-line, no trailing whitespace)
-                  # =================================================================
-
-                  sanitize_output() {
-                    printf '%s' "$1" | tr -d '
-
-' | sed 's/[[:space:]]*$//'
-                  }
-
-                  SOURCE_VERSION="$(sanitize_output "$SOURCE_VERSION")"
-                  BUILD_VERSION="$(sanitize_output "$BUILD_VERSION")"
-
-                  # =================================================================
-                  # Step 5: Process version strings for Docker tags
-                  # =================================================================
-
-                  # Clean versions (remove 'v' prefix if present)
-                  SOURCE_VERSION_CLEAN=${SOURCE_VERSION#v}
-                  BUILD_VERSION_CLEAN=${BUILD_VERSION#v}
-
-                  # Base versions (remove suffix like '-beta', '-rc1' etc)
-                  SOURCE_VERSION_BASE=${SOURCE_VERSION_CLEAN%%-*}
-                  BUILD_VERSION_BASE=${BUILD_VERSION_CLEAN%%-*}
-
-                  # =================================================================
-                  # Step 6: Output summary and export variables
-                  # =================================================================
+                  # Parse for summary display
+                  source_version=$(echo "$OUTPUT" | grep '^source_version=' | cut -d= -f2-)
+                  source_version_clean=$(echo "$OUTPUT" | grep '^source_version_clean=' | cut -d= -f2-)
+                  source_version_base=$(echo "$OUTPUT" | grep '^source_version_base=' | cut -d= -f2-)
+                  build_version=$(echo "$OUTPUT" | grep '^build_version=' | cut -d= -f2-)
+                  build_version_clean=$(echo "$OUTPUT" | grep '^build_version_clean=' | cut -d= -f2-)
+                  build_version_base=$(echo "$OUTPUT" | grep '^build_version_base=' | cut -d= -f2-)
 
                   echo ""
                   echo "📋 Version Summary:"
-                  echo "├─ 🎯 Palworld Server Source : $SOURCE_VERSION ($SOURCE_VERSION_CLEAN)"
-                  echo "├─ 🏷️ Build/Release Tag     : $BUILD_VERSION ($BUILD_VERSION_CLEAN)"
-                  echo "├─ 🔧 Source Base Version   : $SOURCE_VERSION_BASE"
-                  echo "└─ 🚀 Build Base Version    : $BUILD_VERSION_BASE"
+                  echo "├─ 🎯 Palworld Server Source : $source_version ($source_version_clean)"
+                  echo "├─ 🏷️ Build/Release Tag     : $build_version ($build_version_clean)"
+                  echo "├─ 🔧 Source Base Version   : $source_version_base"
+                  echo "└─ 🚀 Build Base Version    : $build_version_base"
                   echo ""
-
-                  # Export all versions for use in subsequent jobs
-                  echo "source_version=$SOURCE_VERSION" >> $GITHUB_OUTPUT
-                  echo "source_version_clean=$SOURCE_VERSION_CLEAN" >> $GITHUB_OUTPUT
-                  echo "source_version_base=$SOURCE_VERSION_BASE" >> $GITHUB_OUTPUT
-                  echo "build_version=$BUILD_VERSION" >> $GITHUB_OUTPUT
-                  echo "build_version_clean=$BUILD_VERSION_CLEAN" >> $GITHUB_OUTPUT
-                  echo "build_version_base=$BUILD_VERSION_BASE" >> $GITHUB_OUTPUT
-                  echo "version_validated=true" >> $GITHUB_OUTPUT
+                  echo "✅ Version validation passed by scripts/validate_ci_versions.sh"
 
     ##############################################################################
     # 1.5) Run Python test suite
@@ -219,22 +133,233 @@ jobs:
               id: test
               continue-on-error: false
               run: |
+                  set -o pipefail
                   python -m pytest --cov=src --cov-report=term-missing --tb=short -q 2>&1 | tee pytest_output.txt
-                  echo "status=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+                  pytest_status=${PIPESTATUS[0]}
+                  echo "status=$pytest_status" >> "$GITHUB_OUTPUT"
+                  exit "$pytest_status"
 
             - name: 📊 Test and coverage summary
               run: |
-                  echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
-                  echo '```' >> $GITHUB_STEP_SUMMARY
-                  grep -E '(passed|failed|error|warnings?|[0-9]+%)' pytest_output.txt 2>/dev/null | tail -20 >> $GITHUB_STEP_SUMMARY || echo "No test output" >> $GITHUB_STEP_SUMMARY
-                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  echo "## 🧪 Test Results" >> "$GITHUB_STEP_SUMMARY"
+                  echo '```' >> "$GITHUB_STEP_SUMMARY"
+                  grep -E '(passed|failed|error|warnings?|[0-9]+%)' "pytest_output.txt" 2>/dev/null | tail -20 >> "$GITHUB_STEP_SUMMARY" || echo "No test output" >> "$GITHUB_STEP_SUMMARY"
+                  echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+
+    ##############################################################################
+    # 1.75) Deployment validation (Helm/Compose/actionlint)
+    ##############################################################################
+    deploy-validate:
+        needs: prepare
+        runs-on: ubuntu-latest
+        steps:
+            - name: 📥 Checkout repository
+              uses: actions/checkout@v4
+
+            - name: 🔧 Install Helm
+              uses: azure/setup-helm@v4
+              with:
+                  version: "v3.16.3"
+
+            - name: 📦 Install actionlint
+              env:
+                  ACTIONLINT_VERSION: "1.7.7"
+                  # SHA-256 of the official download script for v1.7.7
+                  # Regenerate on version bump: curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v{NEW}/scripts/download-actionlint.bash" | sha256sum
+                  ACTIONLINT_INSTALLER_SHA256: "221d1d16c03e4e4fcd867de34104e8d479bdce20ccdfa553b9a5c0dc29bf6af2"
+              run: |
+                  curl -sSfL \
+                    "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash" \
+                    -o /tmp/install-actionlint.bash
+                  # Verify installer script checksum before executing
+                  echo "${ACTIONLINT_INSTALLER_SHA256}  /tmp/install-actionlint.bash" | sha256sum -c - || {
+                    echo "❌ actionlint installer checksum mismatch" >&2
+                    rm -f /tmp/install-actionlint.bash
+                    exit 1
+                  }
+                  bash /tmp/install-actionlint.bash "${ACTIONLINT_VERSION}"
+                  rm -f /tmp/install-actionlint.bash
+                  ./actionlint -version
+                  test -f ./actionlint || { echo "❌ actionlint download failed" >&2; exit 1; }
+
+            - name: 🔍 actionlint — CI workflow syntax
+              id: check-actionlint
+              run: |
+                  ./actionlint -no-color .github/workflows/build-and-deploy.yml 2>&1 || {
+                    echo "❌ actionlint found issues" >&2
+                    exit 1
+                  }
+
+            - name: 🔍 Helm lint — chart validity
+              id: helm-lint
+              run: |
+                  helm lint charts/palworld-server \
+                    --set server.existingSecret=ci-secret \
+                    --set server.adminPasswordKey=admin-password 2>&1 || {
+                    echo "❌ helm lint failed" >&2
+                    exit 1
+                  }
+
+            - name: ✅ Helm template — Secret provided (positive)
+              id: check-helm-template-positive
+              run: |
+                  helm template palworld charts/palworld-server \
+                    --set server.existingSecret=test-secret \
+                    --set server.adminPasswordKey=admin-password \
+                    > /dev/null 2>&1 || {
+                    echo "❌ helm template with Secret failed" >&2
+                    exit 1
+                  }
+                  echo "✅ helm template with Secret succeeded"
+
+            - name: ❌ Helm template — Secret MISSING (negative)
+              id: check-helm-template-negative
+              run: |
+                  OUTPUT=$(helm template palworld charts/palworld-server 2>&1 || true)
+                  if echo "$OUTPUT" | grep -qiE '(existingSecret.*required|required.*existingSecret)'; then
+                    echo "✅ helm correctly rejected missing existingSecret"
+                  else
+                    echo "❌ helm did NOT reject missing existingSecret" >&2
+                    echo "   Output: $OUTPUT" >&2
+                    exit 1
+                  fi
+
+            - name: 🔍 Default Service — no REST/RCON ports
+              id: check-default-service
+              run: |
+                  SERVICE_YAML=$(helm template palworld charts/palworld-server \
+                    --set server.existingSecret=test-secret \
+                    --set server.adminPasswordKey=admin-password 2>&1)
+                  if echo "$SERVICE_YAML" | grep -qE 'kind: Service'; then
+                    if echo "$SERVICE_YAML" | grep -A30 'kind: Service' | grep -v -- '-management' | grep -qE '(8212|25575)'; then
+                      echo "❌ Default Service exposes management port (8212/25575)" >&2
+                      exit 1
+                    else
+                      echo "✅ Default Service has no REST/RCON ports"
+                    fi
+                  else
+                    echo "❌ Default Service not found in template" >&2
+                    exit 1
+                  fi
+
+            - name: ✅ management Service — opt-in generates ClusterIP
+              id: check-mgmt-service
+              run: |
+                  MGMT_YAML=$(helm template palworld charts/palworld-server \
+                    --set server.existingSecret=test-secret \
+                    --set server.adminPasswordKey=admin-password \
+                    --set managementService.enabled=true 2>&1)
+                  if echo "$MGMT_YAML" | grep -A10 'kind: Service' | grep -q -- '-management'; then
+                    if echo "$MGMT_YAML" | grep -A10 'kind: Service' | grep -A5 -- '-management' | grep -q 'ClusterIP'; then
+                      echo "✅ management ClusterIP Service created when enabled=true"
+                    else
+                      echo "❌ management Service is not ClusterIP" >&2
+                      exit 1
+                    fi
+                  else
+                    echo "❌ management Service not found in template output" >&2
+                    exit 1
+                  fi
+
+            - name: 🔍 Docker Compose config — positive
+              id: check-compose-positive
+              run: |
+                  trap 'rm -f .env' EXIT
+                  # Create .env with all required vars for compose interpolation
+                  cat > .env << 'EOF'
+                  ADMIN_PASSWORD=ci-admin-pw
+                  SERVER_NAME=ci-test
+                  MAX_PLAYERS=16
+                  SERVER_PORT=8211
+                  REST_API_PORT=8212
+                  EOF
+                  ADMIN_PASSWORD=override-pw GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
+                    docker compose config > /dev/null 2>&1 || {
+                    echo "❌ docker compose config (with secrets) failed" >&2
+                    exit 1
+                  }
+                  echo "✅ docker compose config with secrets succeeded"
+                  # Verify palworld-server env does NOT contain grafana secrets
+                  CONFIG_JSON=$(ADMIN_PASSWORD=override-pw GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
+                    docker compose config 2>&1)
+                  if echo "$CONFIG_JSON" | grep -qi 'GRAFANA_ADMIN_PASSWORD'; then
+                    echo "❌ palworld-server env leaks GRAFANA_ADMIN_PASSWORD" >&2
+                    exit 1
+                  fi
+                  echo "✅ palworld-server env does not contain grafana secrets"
+
+            - name: ❌ Docker Compose config — ADMIN_PASSWORD missing (negative)
+              id: check-compose-negative-admin
+              run: |
+                  trap 'rm -f .env' EXIT
+                  cat > .env << 'EOF'
+                  SERVER_NAME=ci-test
+                  MAX_PLAYERS=16
+                  SERVER_PORT=8211
+                  REST_API_PORT=8212
+                  EOF
+                  GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
+                    docker compose config > /dev/null 2>&1 && {
+                    echo "❌ compose config succeeded despite missing ADMIN_PASSWORD" >&2
+                    exit 1
+                  } || true
+                  OUTPUT=$(GRAFANA_ADMIN_PASSWORD=ci-graf-pw \
+                    docker compose config 2>&1 || true)
+                  if echo "$OUTPUT" | grep -qi 'ADMIN_PASSWORD'; then
+                    echo "✅ compose correctly rejected missing ADMIN_PASSWORD"
+                  else
+                    echo "❌ compose did NOT reject missing ADMIN_PASSWORD" >&2
+                    echo "   Output: $OUTPUT" >&2
+                    exit 1
+                  fi
+
+            - name: ❌ Docker Compose config — GRAFANA_PW missing (negative)
+              id: check-compose-negative-grafana
+              run: |
+                  trap 'rm -f .env' EXIT
+                  cat > .env << 'EOF'
+                  ADMIN_PASSWORD=ci-admin-pw
+                  SERVER_NAME=ci-test
+                  MAX_PLAYERS=16
+                  SERVER_PORT=8211
+                  REST_API_PORT=8212
+                  EOF
+                  docker compose config > /dev/null 2>&1 && {
+                    echo "❌ compose config succeeded despite missing GRAFANA_ADMIN_PASSWORD" >&2
+                    exit 1
+                  } || true
+                  OUTPUT=$(docker compose config 2>&1 || true)
+                  if echo "$OUTPUT" | grep -qi 'GRAFANA_ADMIN_PASSWORD'; then
+                    echo "✅ compose correctly rejected missing GRAFANA_ADMIN_PASSWORD"
+                  else
+                    echo "❌ compose did NOT reject missing GRAFANA_ADMIN_PASSWORD" >&2
+                    echo "   Output: $OUTPUT" >&2
+                    exit 1
+                  fi
+
+            - name: 📊 Validation summary
+              if: always()
+              run: |
+                  cat >> "$GITHUB_STEP_SUMMARY" << EOF
+                  ## 🔍 Deployment Validation
+                  - actionlint: \${{ steps.check-actionlint.outcome }}
+                  - helm lint: \${{ steps.helm-lint.outcome }}
+                  - helm template (Secret provided): \${{ steps.check-helm-template-positive.outcome }}
+                  - helm template (Secret missing): \${{ steps.check-helm-template-negative.outcome }}
+                  - Default Service port check: \${{ steps.check-default-service.outcome }}
+                  - management Service opt-in: \${{ steps.check-mgmt-service.outcome }}
+                  - docker compose config (secrets set): \${{ steps.check-compose-positive.outcome }}
+                  - docker compose config (ADMIN_PASSWORD missing): \${{ steps.check-compose-negative-admin.outcome }}
+                  - docker compose config (GRAFANA_PW missing): \${{ steps.check-compose-negative-grafana.outcome }}
+                  EOF
 
 
     ##############################################################################
     # 2) Build ARM64 image
     ##############################################################################
     build:
-        needs: prepare
+        needs: [prepare, test, deploy-validate]
         runs-on: ubuntu-latest
         permissions:
             contents: read
@@ -258,7 +383,7 @@ jobs:
                   # Always build on workflow_dispatch with force_rebuild
                   if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
                     echo "🔄 Force rebuild enabled via workflow_dispatch"
-                    echo "build_image=true" >> $GITHUB_OUTPUT
+                    echo "build_image=true" >> "$GITHUB_OUTPUT"
                     exit 0
                   fi
 
@@ -274,14 +399,14 @@ jobs:
                     echo "✅ Image $IMAGE_TAG already exists in GHCR"
                     if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
                       echo "🔄 Force rebuild enabled, proceeding anyway"
-                      echo "build_image=true" >> $GITHUB_OUTPUT
+                      echo "build_image=true" >> "$GITHUB_OUTPUT"
                     else
                       echo "⏭️ Skipping build (image exists, use force_rebuild to override)"
-                      echo "build_image=false" >> $GITHUB_OUTPUT
+                      echo "build_image=false" >> "$GITHUB_OUTPUT"
                     fi
                   else
                     echo "❌ Image $IMAGE_TAG not found in GHCR, proceeding with build"
-                    echo "build_image=true" >> $GITHUB_OUTPUT
+                    echo "build_image=true" >> "$GITHUB_OUTPUT"
                   fi
 
             - name: 📥 Checkout repository
@@ -300,7 +425,6 @@ jobs:
               with:
                   driver: docker-container
                   use: true
-                  install: true
 
             - name: 🔑 Login to GHCR
               if: steps.check-images.outputs.build_image == 'true'
@@ -511,6 +635,10 @@ jobs:
     summary:
         needs: [prepare, build]
         runs-on: ubuntu-latest
+        env:
+            SOURCE_VERSION: ${{ needs.prepare.outputs.source_version }}
+            SOURCE_VERSION_BASE: ${{ needs.prepare.outputs.source_version_base }}
+            BUILD_VERSION_BASE: ${{ needs.prepare.outputs.build_version_base }}
         steps:
             - name: 📥 Download digest artifact
               uses: actions/download-artifact@v4
@@ -525,11 +653,11 @@ jobs:
                   ARM64_DIGEST=$(cat /tmp/digests/digests-arm64/digest.txt 2>/dev/null | cut -c1-12 || echo "N/A")
                   ARM64_STATUS=$([ -f /tmp/digests/digests-arm64/digest.txt ] && echo "✅ Success" || echo "❌ Failed")
 
-                  BUILD_COUNT=$(ls /tmp/digests 2>/dev/null | wc -l || echo "0")
+                  BUILD_COUNT=$(find /tmp/digests -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | wc -l || echo "0")
                   BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')
 
                   # Write summary with pre-calculated values
-                  cat >> $GITHUB_STEP_SUMMARY << EOF
+                  cat >> "$GITHUB_STEP_SUMMARY" << EOF
                   # 🚀 Palworld Server ARM64 Build Summary
 
                   **Build Date**: $BUILD_DATE  
@@ -587,7 +715,7 @@ jobs:
                   **📊 Total Architectures Built**: $BUILD_COUNT  
                   **🚀 Platform**: ARM64 optimized  
 
-                  *Generated by [Palworld Server Builder](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) • Build #${{ github.run_number }}*
+                  *Build metadata: [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) • Build #${{ github.run_number }}*
                   EOF
 
     ##############################################################################
@@ -610,7 +738,7 @@ jobs:
               with:
                   fetch-depth: 0 # Fetch all history for commit history
             - name: 🕐 Set current date
-              run: echo "BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+              run: echo "BUILD_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_ENV"
             - name: 📝 Generate release notes with categorized commit history
               id: release-notes
               run: |
@@ -725,9 +853,11 @@ jobs:
                   fi
 
                   # Export release notes to GitHub output
-                  echo "body<<EOF" >> $GITHUB_OUTPUT
-                  echo -e "$RELEASE_NOTES" >> $GITHUB_OUTPUT
-                  echo "EOF" >> $GITHUB_OUTPUT
+                  {
+                    echo "body<<EOF"
+                    printf '%s\n' "$RELEASE_NOTES"
+                    echo "EOF"
+                  } >> "$GITHUB_OUTPUT"
 
             - name: 🏷️ Create Git tag via API
               env:
@@ -739,7 +869,7 @@ jobs:
                   else
                     echo "🏷️ Creating tag via GitHub API: $TAG_NAME"
                     git tag "$TAG_NAME"
-                    gh api repos/${{ github.repository }}/git/refs -f ref=refs/tags/$TAG_NAME -f sha=$(git rev-parse HEAD)
+                    gh api "repos/${{ github.repository }}/git/refs" -f "ref=refs/tags/$TAG_NAME" -f "sha=$(git rev-parse HEAD)"
                   fi
 
             - name: 🏷️ Create comprehensive GitHub Release for Palworld Server

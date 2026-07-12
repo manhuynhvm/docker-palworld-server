@@ -6,12 +6,23 @@ services:
         container_name: palworld-server
         hostname: palworld-server
         restart: unless-stopped
-        env_file: .env
+        environment:
+            # Required — must be set via .env or shell environment
+            ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin password is required in .env or environment}
+            SERVER_NAME: ${SERVER_NAME:?Server name is required}
+            MAX_PLAYERS: ${MAX_PLAYERS:?MAX_PLAYERS is required}
+            SERVER_PORT: ${SERVER_PORT:?SERVER_PORT is required}
+            REST_API_PORT: ${REST_API_PORT:?REST_API_PORT is required}
+            # Optional
+            PUID: ${PUID:-1002}
+            PGID: ${PGID:-1002}
+            BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+            MONITORING_MODE: ${MONITORING_MODE:-both}
         ports:
             - "8211:8211/udp" # Game server port
             - "27015:27015/udp" # Steam query port
             - "127.0.0.1:8212:8212/tcp" # REST API port (localhost only)
-            - "9090:9090/tcp" # Prometheus metrics (optional)
+            - "127.0.0.1:9090:9090/tcp" # Prometheus metrics (localhost only)
 
         volumes:
             - ./palworld_data:/home/steam/palworld_server/Pal/Saved

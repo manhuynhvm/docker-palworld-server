@@ -48,14 +48,10 @@ spec:
             - name: SERVER_PASSWORD
               value: {{ .Values.server.password | quote }}
             - name: ADMIN_PASSWORD
-{{- if .Values.server.existingSecret }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.server.existingSecret }}
+                  name: {{ required "server.existingSecret is required" .Values.server.existingSecret }}
                   key: {{ .Values.server.adminPasswordKey }}
-{{- else }}
-              value: {{ required "server.adminPassword is required when server.existingSecret is not set" .Values.server.adminPassword | quote }}
-{{- end }}
             - name: MAX_PLAYERS
               value: {{ .Values.server.maxPlayers | quote }}
             - name: SERVER_PORT

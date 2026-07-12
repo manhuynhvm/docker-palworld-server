@@ -33,12 +33,16 @@
 docker run -d \
   --name palworld-server \
   -p 8211:8211/udp \
-  -p 8212:8212/tcp \
-  -p 25575:25575/tcp \
+  -p 127.0.0.1:8212:8212/tcp \
+  -p 127.0.0.1:25575:25575/tcp \
+  -e ADMIN_PASSWORD=your-secure-password \
   -v palworld-data:/home/steam/palworld_server \
   -v palworld-backups:/home/steam/backups \
   supersunho/palworld-server:latest
 ```
+
+> ⚠️ **Security**: REST API (8212) and RCON (25575) bind to `127.0.0.1` by default.
+> To expose them externally, configure a VPN, firewall allowlist, or ingress authentication.
 
 ### **📋 Docker Compose (Recommended)**
 
@@ -51,8 +55,8 @@ services:
         restart: unless-stopped
         ports:
             - "8211:8211/udp" # Game Server
-            - "8212:8212/tcp" # REST API
-            - "25575:25575/tcp" # RCON
+            - "127.0.0.1:8212:8212/tcp" # REST API (localhost only)
+            - "127.0.0.1:25575:25575/tcp" # RCON (localhost only)
         environment:
             - SERVER_NAME=🎮 My Palworld Server
             - MAX_PLAYERS=32

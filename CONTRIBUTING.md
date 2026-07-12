@@ -42,8 +42,8 @@ docker build -t palworld-server:dev .
 # Run the container
 docker run -d --name palworld-dev \
   -p 8211:8211/udp \
-  -p 8212:8212/tcp \
-  -e ADMIN_PASSWORD=<your-password> \
+  -p 127.0.0.1:8212:8212/tcp \
+  -e ADMIN_PASSWORD=YOUR_ADMIN_PASSWORD \
   palworld-server:dev
 ```
 

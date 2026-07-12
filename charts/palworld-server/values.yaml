@@ -13,9 +13,6 @@ image:
 server:
   name: "Palworld Server"
   password: ""
-  # adminPassword is now managed via Kubernetes Secret; see existingSecret below.
-  # If you must set a plain-text password here, uncomment the line below.
-  # adminPassword: "changeme"
   maxPlayers: 32
   port: 8211
   description: "A Palworld dedicated server"
@@ -86,7 +83,7 @@ service:
 
 # Management service (REST API + RCON)
 # Disabled by default; enable only when external access is required.
-# When disabled, management ports are only reachable inside the cluster via ClusterIP.
+# When disabled, no management Service is created — REST and RCON ports are not exposed at all.
 managementService:
   enabled: false
   restApiPort: 8212
