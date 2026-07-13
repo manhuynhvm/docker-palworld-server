@@ -6,6 +6,7 @@ services:
         container_name: palworld-server
         hostname: palworld-server
         restart: unless-stopped
+        stop_grace_period: 150s
         environment:
             # Required — must be set via .env or shell environment
             ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin password is required in .env or environment}

@@ -5,6 +5,7 @@ Waits for REST API to be ready before starting monitoring systems
 """
 
 import asyncio
+import signal
 import time
 import aiohttp
 from typing import Optional, Any
@@ -15,7 +16,7 @@ from .logging_setup import get_logger, log_server_event, setup_logging
 from .clients import SteamCMDManager
 from .managers import ProcessManager, ConfigManager
 from .monitoring import MonitoringManager
-from .managers.lifecycle_manager import ServerLifecycleManager
+from .managers.lifecycle_manager import ServerLifecycleManager, ServerState
 from .managers.api_facade import ServerAPIFacade
 from .managers.settings_generator import SettingsGenerator
 from .container import ServiceContainer
@@ -52,9 +53,13 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
                         logger.info(f"REST API is ready and responding (attempt {attempt}, {elapsed}s elapsed)")
                         return True
                     elif response.status == 401:
-                        logger.info(f"REST API is responding (attempt {attempt}, {elapsed}s elapsed)")
-                        logger.warning("Authentication issue detected, but API is ready")
-                        return True
+                        logger.error(
+                            "REST API authentication failed; verify ADMIN_PASSWORD"
+                        )
+                        disable_rest = getattr(manager.api_facade, "disable_rest", None)
+                        if disable_rest is not None:
+                            disable_rest("authentication failed (HTTP 401)")
+                        return False
                     else:
                         logger.debug(f"API responding with status {response.status} (attempt {attempt})")
                             
@@ -67,7 +72,8 @@ async def wait_for_api_ready(manager, max_wait_time: int = 60, check_interval: i
             except Exception as e:
                 logger.debug(f"API check error (attempt {attempt}, {elapsed}s): {str(e)[:50]}...")
             
-            if attempt % (10 // check_interval) == 0:
+            log_every = max(1, 10 // max(1, check_interval))
+            if attempt % log_every == 0:
                 remaining = max_wait_time - elapsed
                 logger.info(f"Still waiting for API... ({elapsed}s elapsed, {remaining}s remaining)")
             
@@ -116,21 +122,33 @@ class PalworldServerManager:
         self.monitoring_manager = MonitoringManager(
             self.config, 
             self.process_manager, 
-            self.api_facade
+            self.api_facade,
+            self.lifecycle_manager,
         )
         
         self._backup_manager: Optional[Any] = None
         self._startup_completed = False
+        self._shutdown_event = asyncio.Event()
+        self._exit_code = 0
+        self._shutdown_reason = ""
+        self._process_watch_task: Optional[asyncio.Task] = None
+        self._cleanup_started = False
     
     def _setup_container_services(self):
         """Setup default services in the container if not already registered"""
-        if not self.container.has_service(ProcessManager):
-            process_manager = ProcessManager(self.config, self.logger)
-            self.container.register(ProcessManager, process_manager)
-        
-        if not self.container.has_service(ServerLifecycleManager):
+        if self.container.has_service(ServerLifecycleManager):
+            lifecycle_manager = self.container.resolve(ServerLifecycleManager)
+            self.container.register(
+                ProcessManager, lifecycle_manager.process_manager
+            )
+        else:
+            if self.container.has_service(ProcessManager):
+                process_manager = self.container.resolve(ProcessManager)
+            else:
+                process_manager = ProcessManager(self.config, self.logger)
+                self.container.register(ProcessManager, process_manager)
             lifecycle_manager = ServerLifecycleManager(
-                self.config, self.logger
+                self.config, self.logger, process_manager=process_manager
             )
             self.container.register(ServerLifecycleManager, lifecycle_manager)
         
@@ -155,6 +173,10 @@ class PalworldServerManager:
         if self.config.backup.enabled:
             from .backup.backup_manager import get_backup_manager
             self._backup_manager = get_backup_manager(self.config)
+            self._backup_manager.configure_runtime(
+                self.api_facade.save_world,
+                self.process_manager.is_server_running,
+            )
             await self._backup_manager.start_backup_scheduler()
             
             if hasattr(self._backup_manager, 'add_completion_callback'):
@@ -168,16 +190,29 @@ class PalworldServerManager:
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Cleanup all components"""
-        await self.api_facade.cleanup_clients()
-        
+        if self._cleanup_started:
+            return
+        self._cleanup_started = True
+
+        await self.config_manager.stop_watching()
+
         if hasattr(self, 'monitoring_manager'):
             await self.monitoring_manager.stop_monitoring()
-        
-        if self.process_manager.is_server_running():
-            await self.stop_server("System shutdown")
-        
+
         if self._backup_manager:
             await self._backup_manager.stop_backup_scheduler()
+
+        if self.process_manager.is_server_running():
+            await self.lifecycle_manager.shutdown(
+                "System shutdown", self.api_facade
+            )
+
+        await self.api_facade.cleanup_clients()
+
+        if self._process_watch_task:
+            self._process_watch_task.cancel()
+            await asyncio.gather(self._process_watch_task, return_exceptions=True)
+            self._process_watch_task = None
     
     def _ensure_directories(self) -> None:
         """Create necessary directories for server operation"""
@@ -200,15 +235,6 @@ class PalworldServerManager:
             await self.monitoring_manager.handle_error("Failed to start Palworld server")
             return False
         
-        self.logger.info("Server process started, verifying startup...")
-        
-        # Use the lifecycle manager's verify method
-        process_stable = await self.lifecycle_manager.verify_startup()
-        if not process_stable:
-            self.logger.error("Server process is not stable")
-            await self.monitoring_manager.handle_error("Server process unstable after startup")
-            return False
-        
         if self.config.rest_api.enabled:
             self.logger.info("Waiting for REST API to become ready...")
             api_ready = await wait_for_api_ready(self, max_wait_time=60, check_interval=2)
@@ -228,6 +254,64 @@ class PalworldServerManager:
             await self.monitoring_manager.handle_error(f"Failed to start monitoring: {str(e)}")
         
         self._startup_completed = True
+        return True
+
+    def start_process_watch(self) -> None:
+        if self._process_watch_task is None:
+            self._process_watch_task = asyncio.create_task(
+                self._watch_process_liveness()
+            )
+
+    async def _watch_process_liveness(self) -> None:
+        """Request container shutdown only for an unexpected process exit."""
+        while not self._shutdown_event.is_set():
+            await asyncio.sleep(5)
+            if self.has_unexpected_process_exit():
+                self.logger.error("Palworld process exited unexpectedly")
+                self.request_shutdown(1, "Palworld process exited unexpectedly")
+                return
+
+    def has_unexpected_process_exit(self) -> bool:
+        """Intentional restart downtime is not a terminal process exit."""
+        return (
+            self.lifecycle_manager.state == ServerState.RUNNING
+            and not self.process_manager.is_server_running()
+        )
+
+    def request_shutdown(self, exit_code: int = 0, reason: str = "") -> None:
+        self._exit_code = exit_code
+        self._shutdown_reason = reason
+        self._shutdown_event.set()
+
+    async def wait_for_shutdown(self) -> int:
+        await self._shutdown_event.wait()
+        return self._exit_code
+
+    async def apply_config_and_recycle(self, staged_config) -> bool:
+        """Gracefully stop, install validated settings, and recycle container."""
+        if self._shutdown_event.is_set():
+            return False
+
+        self.logger.warning("Applying validated configuration via container restart")
+        await self.monitoring_manager.stop_monitoring()
+        if self._backup_manager:
+            await self._backup_manager.stop_backup_scheduler()
+
+        if self.process_manager.is_server_running():
+            save_ok = await self.api_facade.save_world()
+            if not save_ok:
+                self.logger.warning("Save-world failed before configuration restart")
+
+        stopped = await self.lifecycle_manager.recycle_config(
+            lambda: self.config_manager.install_staged(staged_config),
+            "Configuration changed; server restarting",
+            self.api_facade,
+        )
+        if not stopped:
+            self.logger.error("Configuration restart aborted: server did not stop")
+            return False
+
+        self.request_shutdown(75, "Validated configuration installed")
         return True
     
     async def download_server_files(self) -> bool:
@@ -262,7 +346,7 @@ class PalworldServerManager:
     
     async def start_server(self) -> bool:
         """Start Palworld server"""
-        success = await self.process_manager.start_server()
+        success = await self.lifecycle_manager.start()
         
         if not success:
             asyncio.create_task(
@@ -273,10 +357,7 @@ class PalworldServerManager:
     
     async def stop_server(self, message: str = "Server is shutting down") -> bool:
         """Stop Palworld server gracefully"""
-        return await self.process_manager.stop_server(
-            message, 
-            self.api_facade.get_api_client()
-        )
+        return await self.lifecycle_manager.shutdown(message, self.api_facade)
     
     def get_server_status(self) -> dict:
         """Get detailed server process status"""
@@ -408,6 +489,7 @@ class PalworldServerManager:
 
 async def main():
     """Main production server function with API readiness verification"""
+    manager_exit_code = 0
     config = get_config()
     setup_logging(
         log_level=config.monitoring.log_level,
@@ -422,6 +504,19 @@ async def main():
     print(f"   Max Players: {config.server.max_players}")
     
     async with PalworldServerManager(config) as manager:
+        loop = asyncio.get_running_loop()
+        for shutdown_signal in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(
+                    shutdown_signal,
+                    manager.request_shutdown,
+                    0,
+                    f"Received {shutdown_signal.name}",
+                )
+            except (NotImplementedError, RuntimeError):
+                # Windows development loops do not implement POSIX handlers.
+                pass
+
         if config.steamcmd.update_on_start:
             print("Downloading/updating server files...")
             download_success = await manager.download_server_files()
@@ -443,45 +538,24 @@ async def main():
             print(f"Monitoring active: {status['monitoring']['monitoring_active']}")
             print(f"Startup completed: {status['startup_completed']}")
 
-            # Start config file watching for hot-reload
-            config_hot_reload = manager.config.monitoring.mode in ("logs", "prometheus", "both")
-            if config_hot_reload:
-                async def on_config_change():
-                    """Callback when config files have been regenerated.
-                    Attempts to trigger hot-reload via SIGHUP.
-                    """
-                    sent = await manager.process_manager.reload_config()
-                    if sent:
-                        log_server_event(manager.logger, "config_hot_reload",
-                                       "Configuration hot-reloaded via SIGHUP")
-                    else:
-                        log_server_event(manager.logger, "config_hot_reload_fail",
-                                       "Hot-reload queued - will apply on next server restart")
+            # Apply file changes through a validated, graceful container recycle.
+            config_restart_watch_enabled = manager.config.monitoring.mode in (
+                "logs", "prometheus", "both"
+            )
+            if config_restart_watch_enabled:
+                async def on_config_change(staged_config):
+                    await manager.apply_config_and_recycle(staged_config)
 
                 await manager.config_manager.start_watching(
                     check_interval=30,
                     on_change=on_config_change
                 )
-                print("Config hot-reload watcher started (30s polling)")
+                print("Validated config restart watcher started (30s polling)")
             
             try:
                 print("Server operational. Monitoring in progress...")
-                
-                _last_status_time = 0
-                
-                while manager.is_server_running():
-                    await asyncio.sleep(60)
-                    
-                    monitoring_status = manager.get_monitoring_manager().get_monitoring_status()
-                    current_players = monitoring_status.get('player_count', 0)
-                    current_time = time.time()
-                    
-                    if _last_status_time == 0:
-                        _last_status_time = current_time
-                    
-                    if (current_time - _last_status_time) >= 300:
-                        print(f"Server operational - Players: {current_players}")
-                        _last_status_time = current_time
+                manager.start_process_watch()
+                manager_exit_code = await manager.wait_for_shutdown()
                     
             except KeyboardInterrupt:
                 print("Received shutdown signal...")
@@ -491,7 +565,16 @@ async def main():
             return 1
     
     print("Palworld server manager stopped")
-    return 0
+    if manager_exit_code == 75:
+        print("Requesting Supervisor shutdown for container recreation")
+        try:
+            supervisorctl = await asyncio.create_subprocess_exec(
+                "supervisorctl", "shutdown"
+            )
+            await asyncio.wait_for(supervisorctl.wait(), timeout=10)
+        except (OSError, asyncio.TimeoutError) as exc:
+            print(f"Unable to request Supervisor shutdown: {exc}")
+    return manager_exit_code
 
 
 if __name__ == "__main__":

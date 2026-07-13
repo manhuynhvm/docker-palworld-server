@@ -39,6 +39,7 @@ class PlayerMonitor:
         self.logger = get_logger("palworld.monitoring.players")
         
         self._previous_players: Set[str] = set()
+        self._last_player_count: Optional[int] = None
         self._first_check = True
         self._monitoring_active = False
         self._shutdown_event = asyncio.Event()
@@ -143,6 +144,7 @@ class PlayerMonitor:
         
         # Clear previous players to prevent memory accumulation
         self._previous_players.clear()
+        self._last_player_count = None
 
         self._monitoring_active = False
     
@@ -194,7 +196,10 @@ class PlayerMonitor:
         for attempt in range(self._retry_count):
             try:
                 api_start_time = time.time()
-                players_response = await self.api_manager.api_get_players()
+                get_players = getattr(self.api_manager, 'get_players', None)
+                if get_players is None:
+                    get_players = self.api_manager.api_get_players
+                players_response = await get_players()
                 api_time = (time.time() - api_start_time) * 1000
                 
                 self.logger.debug(f"API call completed in {api_time:.1f}ms (attempt {attempt + 1})")
@@ -243,6 +248,7 @@ class PlayerMonitor:
                         self.logger.warning(f"Player {i} is not a dictionary: {player}")
                 
                 self._successful_api_calls += 1
+                self._last_player_count = len(player_names)
                 self.logger.debug(f"Successfully extracted {len(player_names)} player names")
                 return player_names
                 
@@ -330,6 +336,12 @@ class PlayerMonitor:
     def get_current_players(self) -> Set[str]:
         """Get current player names"""
         return self._previous_players.copy()
+
+    def get_cached_player_count(self) -> int:
+        """Return the most recent confirmed API count without starting I/O."""
+        if self._last_player_count is not None:
+            return self._last_player_count
+        return len(self._previous_players)
     
     def is_monitoring_active(self) -> bool:
         """Check if monitoring is currently active"""
@@ -343,7 +355,7 @@ class PlayerMonitor:
             "successful_api_calls": self._successful_api_calls,
             "failed_api_calls": self._failed_api_calls,
             "api_success_rate": f"{self._successful_api_calls}/{self._successful_api_calls + self._failed_api_calls}" if (self._successful_api_calls + self._failed_api_calls) > 0 else "0/0",
-            "current_player_count": len(self._previous_players),
+            "current_player_count": self.get_cached_player_count(),
             "current_players": list(self._previous_players),
             "registered_callbacks": {
                 event_type.value: len(callbacks) 

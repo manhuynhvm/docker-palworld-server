@@ -6,7 +6,7 @@ from src.server_manager import (
     PalworldServerManager, wait_for_api_ready
 )
 from src.container import ServiceContainer
-from src.managers.lifecycle_manager import ServerLifecycleManager
+from src.managers.lifecycle_manager import ServerLifecycleManager, ServerState
 from src.managers.api_facade import ServerAPIFacade
 from src.managers.settings_generator import SettingsGenerator
 from src.managers.process_manager import ProcessManager
@@ -21,6 +21,10 @@ class TestPalworldServerManager:
 
         lifecycle = MagicMock(spec=ServerLifecycleManager)
         lifecycle.start = AsyncMock(return_value=True)
+        lifecycle.stop = AsyncMock(return_value=True)
+        lifecycle.shutdown = AsyncMock(return_value=True)
+        lifecycle.recycle_config = AsyncMock(return_value=True)
+        lifecycle.state = MagicMock()
         lifecycle.verify_startup = AsyncMock(return_value=True)
         lifecycle.get_server_status = MagicMock(return_value={
             'running': True, 'pid': 12345, 'uptime': 3600
@@ -37,6 +41,7 @@ class TestPalworldServerManager:
         api_facade = MagicMock(spec=ServerAPIFacade)
         api_facade.initialize_clients = AsyncMock()
         api_facade.cleanup_clients = AsyncMock()
+        api_facade.disable_rest = MagicMock()
         api_facade.get_api_client = MagicMock(return_value=MagicMock())
         api_facade.get_server_info = AsyncMock(return_value=MagicMock())
         api_facade.get_players = AsyncMock(return_value=[])
@@ -100,14 +105,25 @@ class TestPalworldServerManager:
 
     @pytest.mark.asyncio
     async def test_server_startup_stability_fails(self, manager):
-        """FS-13.1.4: Startup fails when verify fails."""
-        manager.lifecycle_manager.verify_startup = AsyncMock(return_value=False)
-        result = await manager.start_server_with_verification()
-        assert result is False
+        """Lifecycle start owns stability verification; it is not repeated."""
+        with patch('src.server_manager.wait_for_api_ready', new=AsyncMock(return_value=True)):
+            result = await manager.start_server_with_verification()
+        assert result is True
+        manager.lifecycle_manager.verify_startup.assert_not_awaited()
 
     def test_is_server_running(self, manager):
         """FS-13: Running status."""
         assert manager.is_server_running() is True
+
+    def test_intentional_restart_downtime_is_not_terminal(self, manager):
+        manager.lifecycle_manager.state = ServerState.RESTARTING
+        manager.process_manager.is_server_running.return_value = False
+        assert manager.has_unexpected_process_exit() is False
+
+    def test_running_process_exit_is_terminal(self, manager):
+        manager.lifecycle_manager.state = ServerState.RUNNING
+        manager.process_manager.is_server_running.return_value = False
+        assert manager.has_unexpected_process_exit() is True
 
     @pytest.mark.asyncio
     async def test_start_server_delegates(self, manager):
@@ -120,6 +136,45 @@ class TestPalworldServerManager:
         """FS-13.3.1: Stop delegates."""
         result = await manager.stop_server()
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_cleanup_closes_api_after_graceful_stop(self, manager):
+        order = []
+        manager.config_manager.stop_watching = AsyncMock()
+        manager.monitoring_manager.stop_monitoring = AsyncMock()
+        manager.lifecycle_manager.shutdown = AsyncMock(
+            side_effect=lambda *args: order.append("stop") or True
+        )
+        manager.api_facade.cleanup_clients = AsyncMock(
+            side_effect=lambda: order.append("cleanup")
+        )
+
+        await manager.__aexit__(None, None, None)
+
+        assert order == ["stop", "cleanup"]
+
+    @pytest.mark.asyncio
+    async def test_validated_config_stops_then_installs_and_recycles(self, manager):
+        staged = MagicMock()
+        order = []
+        manager.monitoring_manager.stop_monitoring = AsyncMock()
+        async def recycle(installer, *args):
+            order.append("stop")
+            installer()
+            return True
+
+        manager.lifecycle_manager.recycle_config = AsyncMock(
+            side_effect=recycle
+        )
+        manager.config_manager.install_staged = MagicMock(
+            side_effect=lambda value: order.append("install")
+        )
+
+        assert await manager.apply_config_and_recycle(staged) is True
+
+        assert order == ["stop", "install"]
+        assert manager._shutdown_event.is_set()
+        assert manager._exit_code == 75
 
     def test_generate_server_settings(self, manager):
         """FS-13.1.3: Settings generation."""
@@ -152,6 +207,7 @@ class TestPalworldServerManager:
         """FS-13.4: Process manager accessor."""
         pm = manager.get_process_manager()
         assert pm is manager.process_manager
+        assert manager.container.resolve(ProcessManager) is pm
 
     @pytest.mark.asyncio
     async def test_api_get_players(self, manager):
@@ -197,8 +253,8 @@ class TestWaitForApiReady:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_api_unauthorized_still_ready(self):
-        """FS-13.1.5: 401 means API is ready."""
+    async def test_api_unauthorized_is_not_ready(self):
+        """FS-13.1.5: 401 is a credential failure, not readiness."""
         mock_response = MagicMock()
         mock_response.status = 401
 
@@ -214,7 +270,10 @@ class TestWaitForApiReady:
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             result = await wait_for_api_ready(manager, max_wait_time=1, check_interval=1)
-            assert result is True
+            assert result is False
+            manager.api_facade.disable_rest.assert_called_once_with(
+                "authentication failed (HTTP 401)"
+            )
 
     @pytest.mark.asyncio
     async def test_api_timeout_returns_false(self):

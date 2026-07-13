@@ -97,6 +97,7 @@ ENV PYTHONUNBUFFERED=1 \
     IDLE_RESTART_ENABLED=true \
     IDLE_RESTART_MINUTES=30 \
     IDLE_RESTART_MODE=restart \
+    PALWORLD_RUNTIME_DIR=/run/palworld \
     DISCORD_ENABLED=false \
     \
     LOG_LEVEL=INFO \
@@ -105,7 +106,7 @@ ENV PYTHONUNBUFFERED=1 \
     PUID=1002 \
     PGID=1002
 
-RUN mkdir -p /app /home/steam/palworld_server/Pal/Saved/Config/LinuxServer /home/steam/backups /home/steam/logs/palworld /etc/supervisor/conf.d
+RUN mkdir -p /app /run/palworld /home/steam/palworld_server/Pal/Saved/Config/LinuxServer /home/steam/backups /home/steam/logs/palworld /etc/supervisor/conf.d
 
 WORKDIR /app
 COPY --from=builder /app/requirements.txt ./
@@ -115,6 +116,7 @@ COPY scripts/ ./scripts/
 COPY docker/supervisor/ /etc/supervisor/conf.d/
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY --chmod=755 scripts/healthcheck.py /usr/local/bin/healthcheck
+COPY --chmod=755 scripts/palworld_control.py /usr/local/bin/palworld-control
 
 # Verify: config loading + Python package imports (ADMIN_PASSWORD needed for env var substitution)
 RUN ADMIN_PASSWORD=verify_build python -c "from src.config_loader import get_config; get_config()" && \
@@ -122,6 +124,7 @@ RUN ADMIN_PASSWORD=verify_build python -c "from src.config_loader import get_con
 
 RUN chown -R steam:steam \
     /app \
+    /run/palworld \
     /home/steam && \
     chmod +x /entrypoint.sh /usr/local/bin/healthcheck && \
     chmod 755 /home/steam/palworld_server \

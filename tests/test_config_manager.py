@@ -4,7 +4,7 @@ import pytest
 import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 from pathlib import Path
-from src.managers.config_manager import ConfigManager
+from src.managers.config_manager import ConfigManager, StagedConfig
 
 
 async def _noop():
@@ -64,27 +64,29 @@ class TestConfigManager:
     # ---- Hot-reload tests ----
 
     def test_reload_and_apply_calls_both_generators(self, manager):
-        """FS-11.4: reload_and_apply regenerates both config files."""
-        with patch.object(manager, 'generate_server_settings', return_value=True) as mock_srv, \
-             patch.object(manager, 'generate_engine_settings', return_value=True) as mock_eng:
+        """FS-11.4: reload validates/stages before atomic installation."""
+        staged = MagicMock()
+        with patch.object(manager, 'stage_reload', return_value=staged) as mock_stage, \
+             patch.object(manager, 'install_staged') as mock_install:
             result = manager.reload_and_apply()
             assert result is True
-            mock_srv.assert_called_once()
-            mock_eng.assert_called_once()
+            mock_stage.assert_called_once()
+            mock_install.assert_called_once_with(staged)
 
     def test_reload_and_apply_failure_returns_false(self, manager):
-        """FS-11.5: reload_and_apply returns False when both fail."""
-        with patch.object(manager, 'generate_server_settings', return_value=False) as mock_srv, \
-             patch.object(manager, 'generate_engine_settings', return_value=False) as mock_eng:
+        """FS-11.5: invalid configuration is not installed."""
+        with patch.object(manager, 'stage_reload', side_effect=ValueError("invalid")), \
+             patch.object(manager, 'install_staged') as mock_install:
             result = manager.reload_and_apply()
             assert result is False
+            mock_install.assert_not_called()
 
     def test_reload_and_apply_partial_ok(self, manager):
-        """FS-11.6: reload_and_apply returns True if at least one succeeds."""
-        with patch.object(manager, 'generate_server_settings', return_value=True) as mock_srv, \
-             patch.object(manager, 'generate_engine_settings', return_value=False) as mock_eng:
+        """FS-11.6: installation is all-or-failure, never partial success."""
+        with patch.object(manager, 'stage_reload', return_value=MagicMock()), \
+             patch.object(manager, 'install_staged', side_effect=OSError("disk full")):
             result = manager.reload_and_apply()
-            assert result is True
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_watch_config_detects_change(self, manager, tmp_path):
@@ -169,10 +171,35 @@ class TestConfigManager:
     def test_reload_and_apply_exception(self, manager):
         """FS-11.12: reload_and_apply returns False on generator exception."""
         """FS-11.12: reload_and_apply returns False on generator exception."""
-        with patch.object(manager, 'generate_server_settings',
+        with patch.object(manager, 'stage_reload',
                           side_effect=RuntimeError("unexpected")):
             result = manager.reload_and_apply()
             assert result is False
+
+    def test_install_staged_rolls_back_both_files_on_failure(
+        self, manager, palworld_config, tmp_path
+    ):
+        manager.config_dir = tmp_path
+        settings = tmp_path / "PalWorldSettings.ini"
+        engine = tmp_path / "Engine.ini"
+        settings.write_text("old settings")
+        engine.write_text("old engine")
+        staged = StagedConfig(palworld_config, "new settings", "new engine")
+        real_replace = __import__('os').replace
+
+        def fail_second_install(source, target):
+            if str(source).endswith("Engine.ini.new") and str(target).endswith("Engine.ini"):
+                raise OSError("simulated install failure")
+            return real_replace(source, target)
+
+        with patch("src.managers.config_manager.os.replace", side_effect=fail_second_install):
+            with pytest.raises(OSError, match="simulated"):
+                manager.install_staged(staged)
+
+        assert settings.read_text() == "old settings"
+        assert engine.read_text() == "old engine"
+        assert not list(tmp_path.glob("*.new"))
+        assert not list(tmp_path.glob("*.previous"))
 
     @pytest.mark.asyncio
     async def test_stop_watching_no_task(self, manager):

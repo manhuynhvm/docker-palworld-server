@@ -13,20 +13,27 @@ from .player_monitor import PlayerMonitor, PlayerEventType
 from .server_monitor import ServerMonitor, ServerEventType
 from .event_dispatcher import EventDispatcher
 from .idle_restart_manager import IdleRestartManager
+from ..managers.lifecycle_manager import ServerLifecycleManager
 
 
 class MonitoringManager:
     """Central manager for all monitoring components"""
     
-    def __init__(self, config: PalworldConfig, process_manager, api_manager):
+    def __init__(self, config: PalworldConfig, process_manager, api_manager,
+                 lifecycle_manager=None):
         """Initialize monitoring manager"""
         self.config = config
         self.logger = get_logger("palworld.monitoring.manager")
         
+        lifecycle_manager = lifecycle_manager or ServerLifecycleManager(
+            config, process_manager=process_manager
+        )
         self.player_monitor = PlayerMonitor(config, api_manager)
         self.server_monitor = ServerMonitor(config, process_manager, api_manager)
         self.event_dispatcher = EventDispatcher(config)
-        self.idle_restart_manager = IdleRestartManager(config, self.player_monitor, process_manager)
+        self.idle_restart_manager = IdleRestartManager(
+            config, self.player_monitor, lifecycle_manager, api_manager
+        )
         
         self._background_tasks: Set[asyncio.Task] = set()
         self._monitoring_active = False
@@ -169,7 +176,7 @@ class MonitoringManager:
             "current_players": list(self.player_monitor.get_current_players()),
             # This status method is synchronous, so report the most recently
             # observed player list rather than starting a REST request here.
-            "player_count": len(self.player_monitor.get_current_players()),
+            "player_count": self.player_monitor.get_cached_player_count(),
             "last_server_status": self.server_monitor.get_last_status(),
             "idle_restart_status": self.idle_restart_manager.get_idle_status(),
             "background_tasks": len(self._background_tasks)

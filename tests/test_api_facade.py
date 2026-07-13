@@ -195,3 +195,20 @@ class TestServerAPIFacadeInitialization:
         rest_mock.__aexit__.assert_awaited_once()
         assert facade._rest is None
         assert facade._rest_available is False
+
+    @pytest.mark.asyncio
+    async def test_cleanup_closes_rest_after_authentication_disables_it(
+        self, palworld_config, mock_logger
+    ):
+        facade = ServerAPIFacade(palworld_config, mock_logger)
+        rest_mock = MagicMock()
+        rest_mock.__aexit__ = AsyncMock()
+        facade._rest = rest_mock
+        facade._rest_available = True
+
+        facade.disable_rest("authentication failed")
+        assert facade._is_rest_available() is False
+        await facade.cleanup_clients()
+
+        rest_mock.__aexit__.assert_awaited_once()
+        assert facade._rest is None

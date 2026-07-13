@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from ..config_loader import PalworldConfig
 from ..logging_setup import get_logger, log_server_event
 from ..notifications import get_discord_notifier
+from ..managers.lifecycle_manager import ServerLifecycleManager
 
 
 @dataclass
@@ -34,14 +35,25 @@ class IdleRestartManager:
     
     Two modes:
     - 'restart': Full server restart (stop + start, ~120s)
-    - 'pause':   SIGSTOP/SIGCONT freeze (~0.1s resume)
+    - 'pause':   SIGSTOP freeze; an operator resumes it with palworld-control
     """
     
-    def __init__(self, config: PalworldConfig, player_monitor, process_manager):
+    def __init__(self, config: PalworldConfig, player_monitor,
+                 lifecycle_manager, api_manager=None):
         """Initialize idle restart manager with configuration"""
         self.config = config
         self.player_monitor = player_monitor
-        self.process_manager = process_manager
+        self.lifecycle_manager = (
+            lifecycle_manager
+            if isinstance(lifecycle_manager, ServerLifecycleManager)
+            else None
+        )
+        self.process_manager = (
+            lifecycle_manager.process_manager
+            if self.lifecycle_manager is not None
+            else lifecycle_manager
+        )
+        self.api_manager = api_manager
         self.logger = get_logger("palworld.idle_restart")
         
         idle_config = getattr(config.monitoring, 'idle_restart', None)
@@ -120,6 +132,10 @@ class IdleRestartManager:
         """Main monitoring loop for idle detection"""
         while self._running:
             try:
+                if self._paused:
+                    await self._check_paused_status()
+                    await asyncio.sleep(1)
+                    continue
                 await self._check_idle_status()
                 await asyncio.sleep(self.check_interval)
             except asyncio.CancelledError:
@@ -149,6 +165,23 @@ class IdleRestartManager:
             await self._handle_zero_players(current_time)
         else:
             await self._handle_active_players(current_player_count)
+
+    async def _check_paused_status(self) -> None:
+        """Handle manual resume and paused safety without calling frozen REST."""
+        if self.process_manager.consume_manual_resume_marker():
+            if self.lifecycle_manager is not None:
+                self.lifecycle_manager.acknowledge_external_resume()
+            self._paused = False
+            self._pause_start_time = None
+            self._idle_start = None
+            self.stats.total_resumes += 1
+            self.logger.info("Manual resume acknowledged; player polling restored")
+            await self._send_discord_notification(
+                "resume", "Server manually resumed from pause"
+            )
+            return
+
+        await self._handle_paused_state(time.time())
     
     async def _handle_zero_players(self, current_time: float) -> None:
         """Handle server state when no players are online"""
@@ -194,24 +227,21 @@ class IdleRestartManager:
             self.logger.warning(
                 f"Server paused for {max_pause_hours}h — performing full restart"
             )
-            await self._perform_restart()
-            self._paused = False
-            self._pause_start_time = None
+            if await self._perform_restart():
+                self._paused = False
+                self._pause_start_time = None
+                self.stats.total_restarts += 1
+                self.stats.last_restart_time = time.time()
+            else:
+                self.logger.error(
+                    "24-hour safety restart failed; retaining paused state"
+                )
     
     async def _handle_active_players(self, player_count: int) -> None:
         """Handle server state when players are online"""
-        # If paused, resume immediately
+        # A SIGSTOP process cannot accept a connection far enough for REST to
+        # observe it. Pause mode is therefore explicitly manual-resume only.
         if self._paused:
-            self.logger.info(f"Player detected — resuming server from pause")
-            resume_ok = await self.process_manager.resume_server()
-            if resume_ok:
-                self._paused = False
-                self._pause_start_time = None
-                self.stats.total_resumes += 1
-                await self._send_discord_notification(
-                    "resume", 
-                    f"Player detected — server resumed from pause"
-                )
             return
         
         # Normal active state — reset idle timer
@@ -271,7 +301,10 @@ class IdleRestartManager:
     async def _perform_pause(self) -> bool:
         """Pause the server via SIGSTOP"""
         self.logger.info("Pausing server (SIGSTOP)...")
-        success = await self.process_manager.pause_server()
+        if self.lifecycle_manager is not None:
+            success = await self.lifecycle_manager.pause()
+        else:
+            success = await self.process_manager.pause_server()
         if success:
             self._paused = True
             self._pause_start_time = time.time()
@@ -281,9 +314,13 @@ class IdleRestartManager:
     async def _perform_restart(self) -> bool:
         """Perform the actual server restart"""
         try:
-            stop_success = await self.process_manager.stop_server(
-                f"Automatic restart after {self.idle_minutes}m of inactivity"
-            )
+            message = f"Automatic restart after {self.idle_minutes}m of inactivity"
+            if self.lifecycle_manager is not None:
+                return await self.lifecycle_manager.restart(
+                    message, self.api_manager
+                )
+
+            stop_success = await self.process_manager.stop_server(message)
             if not stop_success:
                 self.logger.error("Failed to stop server gracefully")
                 return False
@@ -368,7 +405,10 @@ class IdleRestartManager:
     
     async def _force_resume(self) -> None:
         """Internal force resume implementation"""
-        await self.process_manager.resume_server()
+        if self.lifecycle_manager is not None:
+            await self.lifecycle_manager.resume()
+        else:
+            await self.process_manager.resume_server()
         self._paused = False
         self._pause_start_time = None
         self.logger.info("Server forcefully resumed")

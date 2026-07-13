@@ -50,7 +50,7 @@ class ServerAPIFacade(IServerAPI):
     
     async def cleanup_clients(self):
         """Cleanup API clients"""
-        if self._rest and self._rest_available:
+        if self._rest:
             try:
                 await self._rest.__aexit__(None, None, None)
                 self.logger.info("REST API client cleaned up")
@@ -60,7 +60,7 @@ class ServerAPIFacade(IServerAPI):
                 self._rest = None
                 self._rest_available = False
         
-        if self._rcon and self._rcon_available:
+        if self._rcon:
             try:
                 await self._rcon.__aexit__(None, None, None)
                 self.logger.info("RCON client cleaned up")
@@ -69,6 +69,11 @@ class ServerAPIFacade(IServerAPI):
             finally:
                 self._rcon = None
                 self._rcon_available = False
+
+    def disable_rest(self, reason: str) -> None:
+        """Disable REST operations while retaining the client for cleanup."""
+        self._rest_available = False
+        self.logger.error(f"REST API disabled: {reason}")
     
     def _is_rest_available(self) -> bool:
         """Check if REST API client is available"""

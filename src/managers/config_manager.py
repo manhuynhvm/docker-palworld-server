@@ -3,17 +3,28 @@
 Configuration file management for Palworld server
 Handles file writing for PalWorldSettings.ini and Engine.ini.
 All content generation is delegated to SettingsGenerator.
-Supports hot-reload via file polling and SIGHUP forwarding.
+Supports validated configuration staging and controlled container recycling.
 """
 
 import asyncio
 import hashlib
+import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Callable, Dict
 
-from ..config_loader import PalworldConfig
+from ..config_loader import ConfigLoader, PalworldConfig
 from ..logging_setup import log_server_event
 from .settings_generator import SettingsGenerator
+
+
+@dataclass(frozen=True)
+class StagedConfig:
+    """Validated configuration and generated files awaiting installation."""
+
+    config: PalworldConfig
+    server_settings: str
+    engine_settings: str
 
 
 class ConfigManager:
@@ -21,7 +32,7 @@ class ConfigManager:
     
     Delegates all INI content generation to SettingsGenerator.
     Only handles directory creation and file writing.
-    Supports hot-reload via polling-based file change detection.
+    Supports safe reload staging via polling-based file change detection.
     """
     
     def __init__(self, config: PalworldConfig, logger, generator: Optional[SettingsGenerator] = None):
@@ -30,6 +41,7 @@ class ConfigManager:
         self.generator = generator or SettingsGenerator(config, logger)
         self.server_path = config.paths.server_dir
         self.config_dir = self.server_path / "Pal" / "Saved" / "Config" / "LinuxServer"
+        self.config_path = Path("config/default.yaml")
         
         # Hot-reload state
         self._checksums: Dict[str, str] = {}
@@ -95,7 +107,7 @@ class ConfigManager:
     
     def _check_yaml_changed(self) -> bool:
         """Check if the source YAML config has changed since last generation"""
-        config_path = Path("config/default.yaml")
+        config_path = self.config_path
         if not config_path.exists():
             return False
         try:
@@ -113,41 +125,89 @@ class ConfigManager:
         return False
     
     def reload_and_apply(self) -> bool:
-        """Regenerate both config files from current YAML config
-        
-        Returns True if files were regenerated, False on failure.
-        """
+        """Compatibility helper: validate, stage, then atomically install."""
         try:
-            settings_ok = self.generate_server_settings()
-            engine_ok = self.generate_engine_settings()
-            
-            if settings_ok or engine_ok:
-                log_server_event(self.logger, "config_reload",
-                               "Configuration reloaded from YAML source",
-                               server_settings=settings_ok,
-                               engine_settings=engine_ok)
-                return True
-            
-            log_server_event(self.logger, "config_reload_fail",
-                           "Configuration reload failed — neither file was regenerated")
-            return False
+            staged = self.stage_reload()
+            self.install_staged(staged)
+            return True
         except Exception as e:
             log_server_event(self.logger, "config_reload_fail",
                            f"Configuration reload error: {e}")
             return False
+
+    def stage_reload(self) -> StagedConfig:
+        """Load fresh YAML, validate it, and generate content without live writes."""
+        loader = ConfigLoader(self.config_path)
+        config = loader.load_config()
+        loader.validate_config(config)
+        generator = SettingsGenerator(config, self.logger)
+        return StagedConfig(
+            config=config,
+            server_settings=generator.generate_server_settings(),
+            engine_settings=generator.generate_engine_settings(),
+        )
+
+    def install_staged(self, staged: StagedConfig) -> None:
+        """Atomically install staged INI files after Palworld has stopped."""
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        targets = (
+            (self.config_dir / "PalWorldSettings.ini", staged.server_settings),
+            (self.config_dir / "Engine.ini", staged.engine_settings),
+        )
+        temporary_paths = []
+        backup_paths = []
+        installed_targets = []
+        try:
+            for target, content in targets:
+                temporary = target.with_suffix(target.suffix + ".new")
+                temporary.write_text(content, encoding="utf-8")
+                temporary_paths.append((temporary, target))
+
+            for _, target in temporary_paths:
+                backup = target.with_suffix(target.suffix + ".previous")
+                try:
+                    backup.unlink()
+                except FileNotFoundError:
+                    pass
+                if target.exists():
+                    os.replace(target, backup)
+                    backup_paths.append((backup, target))
+
+            for temporary, target in temporary_paths:
+                os.replace(temporary, target)
+                installed_targets.append(target)
+        except Exception:
+            for target in installed_targets:
+                try:
+                    target.unlink()
+                except FileNotFoundError:
+                    pass
+            for backup, target in reversed(backup_paths):
+                os.replace(backup, target)
+            raise
+        finally:
+            for temporary, _ in temporary_paths:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
+            for backup, _ in backup_paths:
+                try:
+                    backup.unlink()
+                except FileNotFoundError:
+                    pass
     
     async def watch_config(self, 
                            check_interval: int = 30,
                            on_change: Optional[Callable] = None) -> None:
         """Poll YAML config for changes and regenerate INI files on change.
         
-        When a change is detected, the INI files are regenerated and an
-        optional callback (typically sending SIGHUP to the server) is invoked.
+        A changed file is validated and staged before the callback coordinates
+        a graceful container recycle.
         
         Args:
             check_interval: Polling interval in seconds.
-            on_change: Async callback invoked when config has changed.
-                       Receives no arguments.
+            on_change: Async callback receiving a :class:`StagedConfig`.
         """
         self._on_config_change = on_change
         
@@ -159,11 +219,16 @@ class ConfigManager:
                 changed = self._check_yaml_changed()
                 
                 if changed:
-                    self.logger.info("Configuration source changed, regenerating INI files")
-                    success = self.reload_and_apply()
-                    
-                    if success and self._on_config_change:
-                        await self._on_config_change()
+                    self.logger.info("Configuration source changed; validating")
+                    try:
+                        staged = self.stage_reload()
+                    except Exception as exc:
+                        self.logger.error(
+                            "Configuration change rejected", error=str(exc)
+                        )
+                    else:
+                        if self._on_config_change:
+                            await self._on_config_change(staged)
                 
                 await asyncio.sleep(check_interval)
                 

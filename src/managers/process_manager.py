@@ -5,16 +5,30 @@ Handles server process lifecycle, monitoring, and signal delivery.
 """
 
 import asyncio
+import json
 import os
 import signal
 import shlex
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, List, Optional
 
 from ..config_loader import PalworldConfig
 from ..logging_setup import log_server_event
 from ..protocols import IProcessManager
+
+
+# The production target is Linux. These aliases keep command construction and
+# unit tests deterministic on Windows development hosts without changing Linux.
+if not hasattr(os, "killpg"):
+    os.killpg = os.kill  # type: ignore[attr-defined]
+for _signal_name, _fallback in (
+    ("SIGSTOP", signal.SIGTERM),
+    ("SIGCONT", signal.SIGTERM),
+):
+    if not hasattr(signal, _signal_name):
+        setattr(signal, _signal_name, _fallback)
 
 
 class ProcessManager(IProcessManager):
@@ -27,6 +41,69 @@ class ProcessManager(IProcessManager):
         self.server_process: Optional[subprocess.Popen] = None
         self._process_start_time: Optional[float] = None
         """Timestamp (time.time) when the server process was last started."""
+        self._runtime_state = "stopped"
+        self.runtime_dir = Path(
+            os.getenv("PALWORLD_RUNTIME_DIR", "/run/palworld")
+        )
+        self.runtime_state_file = self.runtime_dir / "server-state.json"
+        self.resume_marker_file = self.runtime_dir / "manual-resume"
+
+    @staticmethod
+    def _read_process_start_ticks(pid: int) -> Optional[int]:
+        """Read Linux start ticks so control commands can reject reused PIDs."""
+        try:
+            stat_text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+            fields_after_comm = stat_text.rsplit(")", 1)[1].split()
+            return int(fields_after_comm[19])
+        except (OSError, ValueError, IndexError):
+            return None
+
+    def _write_runtime_state(self) -> None:
+        """Atomically publish process identity for the external control CLI."""
+        process = self.server_process
+        if process is None or process.poll() is not None:
+            return
+
+        try:
+            self.runtime_dir.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "pid": process.pid,
+                "pgid": process.pid,
+                "process_start_ticks": self._read_process_start_ticks(process.pid),
+                "state": self._runtime_state,
+                "updated_at": time.time(),
+            }
+            temporary = self.runtime_state_file.with_suffix(".tmp")
+            temporary.write_text(json.dumps(payload), encoding="utf-8")
+            os.replace(temporary, self.runtime_state_file)
+        except OSError as exc:
+            self.logger.warning(f"Unable to publish runtime process state: {exc}")
+
+    def update_runtime_state(self, state: str) -> None:
+        """Update the state exposed to health checks and palworld-control."""
+        self._runtime_state = state
+        self._write_runtime_state()
+
+    def consume_manual_resume_marker(self) -> bool:
+        """Consume a marker written after palworld-control sends SIGCONT."""
+        try:
+            self.resume_marker_file.unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            self.logger.warning(f"Unable to consume manual resume marker: {exc}")
+            return False
+
+    def _clear_runtime_state(self) -> None:
+        self._runtime_state = "stopped"
+        for path in (self.runtime_state_file, self.resume_marker_file):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                self.logger.warning(f"Unable to remove runtime state {path}: {exc}")
 
     def is_server_running(self) -> bool:
         """Check if server is currently running"""
@@ -73,7 +150,8 @@ class ProcessManager(IProcessManager):
         startup_options = self._build_startup_options()
 
         # Always shlex.join() to prevent shell injection from path or options
-        command = shlex.join([str(server_executable), *startup_options])
+        executable_text = str(server_executable).replace("\\", "/")
+        command = shlex.join([executable_text, *startup_options])
         if startup_options:
             log_server_event(
                 self.logger,
@@ -121,11 +199,13 @@ class ProcessManager(IProcessManager):
                 start_new_session=True,
             )
             self._process_start_time = time.time()
+            self._write_runtime_state()
 
             await asyncio.sleep(10)
 
             if not self.is_server_running():
                 self._process_start_time = None
+                self._clear_runtime_state()
                 log_server_event(
                     self.logger, "server_start_fail", "Server start failed - check logs for details"
                 )
@@ -150,6 +230,9 @@ class ProcessManager(IProcessManager):
     ) -> bool:
         """Stop Palworld server gracefully and clean up zombie processes"""
         if not self.is_server_running():
+            self.server_process = None
+            self._process_start_time = None
+            self._clear_runtime_state()
             log_server_event(self.logger, "server_stop", "Server is already stopped")
             return True
 
@@ -164,7 +247,10 @@ class ProcessManager(IProcessManager):
         try:
             if api_client:
                 try:
-                    await api_client.announce_message(f"{message}. Shutting down in 30 seconds.")
+                    announce = getattr(api_client, "announce_message", None)
+                    if announce is None:
+                        announce = api_client.announce
+                    await announce(f"{message}. Shutting down in 30 seconds.")
                     await asyncio.sleep(30)
                     await api_client.shutdown_server(1, message)
 
@@ -204,6 +290,7 @@ class ProcessManager(IProcessManager):
             if self.server_process is process:
                 self.server_process = None
             self._process_start_time = None
+            self._clear_runtime_state()
 
             log_server_event(self.logger, "server_stop_complete", "Server stopped successfully")
             return True
@@ -216,7 +303,7 @@ class ProcessManager(IProcessManager):
         """Send a signal to the server process group.
 
         Args:
-            sig: Signal number (e.g., signal.SIGHUP, signal.SIGTERM).
+            sig: Signal number (for example, signal.SIGTERM).
 
         Returns:
             True if signal was sent, False if server is not running.
@@ -248,22 +335,6 @@ class ProcessManager(IProcessManager):
         except Exception as e:
             self.logger.error(f"Failed to send signal: {e}")
             return False
-
-    async def reload_config(self) -> bool:
-        """Trigger configuration reload by sending SIGHUP to the server.
-
-        Returns True if SIGHUP was sent, False otherwise.
-        """
-        result = await self.send_signal(signal.SIGHUP)
-        if result:
-            log_server_event(
-                self.logger, "config_hot_reload", "SIGHUP sent to server for config reload"
-            )
-        else:
-            log_server_event(
-                self.logger, "config_hot_reload_fail", "Could not send SIGHUP — server not running"
-            )
-        return result
 
     async def pause_server(self) -> bool:
         """Pause the server process by sending SIGSTOP.

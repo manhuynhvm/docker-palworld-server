@@ -18,6 +18,7 @@ class TestIdleRestartManager:
     def manager(self, palworld_config, mock_player_monitor, mock_logger):
         pm = MagicMock()
         pm.is_server_running.return_value = True
+        pm.consume_manual_resume_marker.return_value = False
         return IdleRestartManager(palworld_config, mock_player_monitor, pm)
 
     def test_init_default_mode(self, manager):
@@ -90,16 +91,28 @@ class TestIdleRestartManager:
         assert manager._paused is False
 
     @pytest.mark.asyncio
-    async def test_handle_active_resumes_paused_server(self, manager):
-        """FS-18.10: Active players resume paused server."""
+    async def test_active_player_does_not_auto_resume_paused_server(self, manager):
+        """A SIGSTOP server uses explicit operator resume only."""
         manager._paused = True
         manager.process_manager.resume_server = AsyncMock(return_value=True)
 
         with patch.object(manager, '_send_discord_notification', AsyncMock()):
             await manager._handle_active_players(1)
         
+        assert manager._paused is True
+        manager.process_manager.resume_server.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_manual_resume_marker_restores_polling(self, manager):
+        manager._paused = True
+        manager._pause_start_time = time.time()
+        manager.process_manager.consume_manual_resume_marker.return_value = True
+
+        with patch.object(manager, '_send_discord_notification', AsyncMock()):
+            await manager._check_paused_status()
+
         assert manager._paused is False
-        manager.process_manager.resume_server.assert_awaited_once()
+        assert manager.stats.total_resumes == 1
 
     @pytest.mark.asyncio
     async def test_force_resume(self, manager):
@@ -137,6 +150,21 @@ class TestIdleRestartManager:
         with patch.object(manager, '_perform_restart', AsyncMock(return_value=True)) as mock_restart:
             await manager._handle_paused_state(time.time())
             mock_restart.assert_awaited_once()
+        assert manager._paused is False
+        assert manager.stats.total_restarts == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_safety_restart_keeps_paused_state(self, manager):
+        manager._paused = True
+        manager._pause_start_time = 0.0
+
+        with patch.object(
+            manager, '_perform_restart', AsyncMock(return_value=False)
+        ):
+            await manager._handle_paused_state(time.time())
+
+        assert manager._paused is True
+        assert manager.stats.total_restarts == 0
 
     @pytest.mark.asyncio
     async def test_trigger_idle_action_increments_pause_stats(self, manager):
@@ -159,6 +187,7 @@ class TestIdleRestartManagerEdgeCases:
     def manager(self, palworld_config, mock_player_monitor, mock_logger):
         pm = MagicMock()
         pm.is_server_running.return_value = True
+        pm.consume_manual_resume_marker.return_value = False
         return IdleRestartManager(palworld_config, mock_player_monitor, pm)
 
     @pytest.fixture

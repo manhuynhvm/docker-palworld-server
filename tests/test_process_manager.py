@@ -180,11 +180,8 @@ class TestProcessManager:
             assert result is False
 
     def test_reload_config_sends_sighup(self, manager):
-        """FS-10.x: reload_config delegates to send_signal with SIGHUP."""
-        with patch.object(manager, 'send_signal', new=AsyncMock(return_value=True)) as mock_send:
-            result = asyncio.run(manager.reload_config())
-            assert result is True
-            mock_send.assert_called_once_with(signal.SIGHUP)
+        """Palworld config reload must never expose the unsafe SIGHUP path."""
+        assert not hasattr(manager, 'reload_config')
 
     def test_pause_and_resume_server(self, manager):
         """FS-10.x: pause and resume delegate to send_signal."""
@@ -261,11 +258,7 @@ class TestProcessManager:
         assert summary["options_count"] == 0
 
     def test_reload_config_signal_failure(self, manager):
-        """FS-10.x: reload_config returns False when send_signal fails."""
-        from unittest.mock import AsyncMock
-        with patch.object(manager, 'send_signal', new=AsyncMock(return_value=False)):
-            result = asyncio.run(manager.reload_config())
-            assert result is False
+        assert not hasattr(manager, 'reload_config')
     def test_get_startup_options_summary(self, manager):
         """FS-10.6: Options summary returns dict."""
         summary = manager.get_startup_options_summary()
@@ -276,7 +269,7 @@ class TestProcessManager:
 
     def test_send_signal_not_running(self, manager):
         """FS-10.7: send_signal returns False when server not running."""
-        result = asyncio.run(manager.send_signal(signal.SIGHUP))
+        result = asyncio.run(manager.send_signal(signal.SIGTERM))
         assert result is False
 
     def test_send_signal_success(self, manager):
@@ -287,9 +280,9 @@ class TestProcessManager:
         manager.server_process = mock_process
         
         with patch('os.killpg') as mock_killpg:
-            result = asyncio.run(manager.send_signal(signal.SIGHUP))
+            result = asyncio.run(manager.send_signal(signal.SIGTERM))
             assert result is True
-            mock_killpg.assert_called_once_with(12345, signal.SIGHUP)
+            mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
 
     def test_send_signal_process_lookup_error(self, manager):
         """FS-10.9: send_signal returns False on ProcessLookupError."""
@@ -299,25 +292,14 @@ class TestProcessManager:
         manager.server_process = mock_process
         
         with patch('os.killpg', side_effect=ProcessLookupError):
-            result = asyncio.run(manager.send_signal(signal.SIGHUP))
+            result = asyncio.run(manager.send_signal(signal.SIGTERM))
             assert result is False
 
     def test_reload_config_not_running(self, manager):
-        """FS-10.10: reload_config returns False when server not running."""
-        result = asyncio.run(manager.reload_config())
-        assert result is False
+        assert not hasattr(manager, 'reload_config')
 
     def test_reload_config_success(self, manager):
-        """FS-10.11: reload_config sends SIGHUP to server."""
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_process.poll.return_value = None
-        manager.server_process = mock_process
-        
-        with patch('os.killpg') as mock_killpg:
-            result = asyncio.run(manager.reload_config())
-            assert result is True
-            mock_killpg.assert_called_once_with(12345, signal.SIGHUP)
+        assert not hasattr(manager, 'reload_config')
 
     # ---- Pause / Resume tests ----
 

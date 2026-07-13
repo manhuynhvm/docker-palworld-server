@@ -1,6 +1,7 @@
 """Tests for the backup manager."""
 
 import pytest
+import tarfile
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 
@@ -118,3 +119,64 @@ class TestEnhancedBackupManager:
         assert "total_backups" in stats
         assert "total_size_bytes" in stats
         assert "retention_policy" in stats
+
+    @pytest.mark.asyncio
+    async def test_live_backup_saves_then_publishes_verified_archive(
+        self, manager, tmp_path
+    ):
+        manager.source_dir = tmp_path / "Saved" / "SaveGames"
+        manager.config_dir = tmp_path / "Saved" / "Config"
+        manager.backup_dir = tmp_path / "backups"
+        manager.source_dir.mkdir(parents=True)
+        manager.config_dir.mkdir(parents=True)
+        manager.backup_dir.mkdir()
+        (manager.source_dir / "World.sav").write_text("world")
+        (manager.config_dir / "PalWorldSettings.ini").write_text("settings")
+
+        save_world = AsyncMock(return_value=True)
+        callback = AsyncMock()
+        manager.configure_runtime(save_world, lambda: True)
+        manager.add_completion_callback(callback)
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await manager.create_backup("safe", "manual")
+
+        assert result["success"] is True
+        save_world.assert_awaited_once()
+        callback.assert_awaited_once()
+        assert not list(manager.backup_dir.glob("*.partial"))
+        with tarfile.open(result["filepath"], "r:*") as archive:
+            names = archive.getnames()
+        assert "SaveGames/World.sav" in names
+        assert "Config/PalWorldSettings.ini" in names
+        assert all(not name.startswith("SaveGames/Config") for name in names)
+
+    @pytest.mark.asyncio
+    async def test_live_backup_aborts_when_save_world_fails(self, manager, tmp_path):
+        manager.source_dir = tmp_path / "SaveGames"
+        manager.backup_dir = tmp_path / "backups"
+        manager.source_dir.mkdir()
+        manager.backup_dir.mkdir()
+        manager.configure_runtime(AsyncMock(return_value=False), lambda: True)
+
+        result = await manager.create_backup()
+
+        assert result["success"] is False
+        assert "Save-world failed" in result["error"]
+        assert not list(manager.backup_dir.iterdir())
+
+    @pytest.mark.asyncio
+    async def test_force_backup_bypasses_save_world_failure(self, manager, tmp_path):
+        manager.source_dir = tmp_path / "SaveGames"
+        manager.config_dir = tmp_path / "Config"
+        manager.backup_dir = tmp_path / "backups"
+        manager.source_dir.mkdir()
+        manager.backup_dir.mkdir()
+        (manager.source_dir / "World.sav").write_text("world")
+        save_world = AsyncMock(return_value=False)
+        manager.configure_runtime(save_world, lambda: True)
+
+        result = await manager.create_backup(force=True)
+
+        assert result["success"] is True
+        save_world.assert_not_awaited()

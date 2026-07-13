@@ -23,6 +23,18 @@ class IProcessManager(Protocol):
                          api_client=None) -> bool:
         """Stop Palworld server gracefully and clean up zombie processes"""
         ...
+
+    async def pause_server(self) -> bool:
+        ...
+
+    async def resume_server(self) -> bool:
+        ...
+
+    def update_runtime_state(self, state: str) -> None:
+        ...
+
+    def consume_manual_resume_marker(self) -> bool:
+        ...
     
     def get_server_status(self) -> Dict[str, Any]:
         """Get detailed server process status"""

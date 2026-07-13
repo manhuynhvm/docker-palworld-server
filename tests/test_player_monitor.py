@@ -71,7 +71,7 @@ class TestPlayerMonitor:
         """FS-15: Player tracking."""
         monitor._previous_players = {"P1", "P2"}
         assert monitor.get_current_players() == {"P1", "P2"}
-        monitor.api_manager.api_get_players.return_value = [
+        monitor.api_manager.get_players.return_value = [
             {"name": "P1"},
             {"name": "P2"},
             {"name": "P3"},
@@ -82,7 +82,7 @@ class TestPlayerMonitor:
     async def test_get_current_player_count_returns_none_when_api_fails(self, monitor):
         """An API failure must not be interpreted as zero online players."""
         monitor._retry_count = 1
-        monitor.api_manager.api_get_players.return_value = None
+        monitor.api_manager.get_players.return_value = None
 
         assert await monitor.get_current_player_count() is None
 

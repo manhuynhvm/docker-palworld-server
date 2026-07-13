@@ -1,9 +1,10 @@
 """Tests for the lifecycle manager."""
 
+import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from src.managers.lifecycle_manager import (
-    ServerLifecycleManager, verify_server_startup
+    ServerLifecycleManager, ServerState, verify_server_startup
 )
 
 
@@ -96,6 +97,118 @@ class TestVerifyServerStartup:
         pm.is_server_running = MagicMock(return_value=False)
         result = await verify_server_startup(pm, max_wait_time=5)
         assert result is False
+
+
+class TestSerializedLifecycle:
+    @pytest.mark.asyncio
+    async def test_config_recycle_is_terminal_and_installs_while_locked(
+        self, palworld_config, mock_logger
+    ):
+        pm = MagicMock()
+        pm.update_runtime_state = MagicMock()
+        pm.stop_server = AsyncMock(return_value=True)
+        pm.is_server_running.return_value = True
+        manager = ServerLifecycleManager(
+            palworld_config, mock_logger, process_manager=pm
+        )
+        manager._state = ServerState.RUNNING
+        installed = MagicMock()
+
+        assert await manager.recycle_config(installed, "config change") is True
+        installed.assert_called_once_with()
+        assert manager.state == ServerState.STOPPED
+        assert await manager.start() is False
+
+    @pytest.mark.asyncio
+    async def test_config_install_failure_recovers_server(
+        self, palworld_config, mock_logger
+    ):
+        pm = MagicMock()
+        pm.update_runtime_state = MagicMock()
+        pm.stop_server = AsyncMock(return_value=True)
+        pm.start_server = AsyncMock(return_value=True)
+        pm.is_server_running.return_value = True
+        manager = ServerLifecycleManager(
+            palworld_config, mock_logger, process_manager=pm
+        )
+        manager._state = ServerState.RUNNING
+
+        def fail_install():
+            raise OSError("disk error")
+
+        with patch(
+            "src.managers.lifecycle_manager.verify_server_startup",
+            new=AsyncMock(return_value=True),
+        ):
+            assert await manager.recycle_config(fail_install, "config change") is False
+
+        pm.start_server.assert_awaited_once()
+        assert manager.state == ServerState.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_restart_resumes_paused_process_before_stop(
+        self, palworld_config, mock_logger
+    ):
+        pm = MagicMock()
+        pm.update_runtime_state = MagicMock()
+        pm.resume_server = AsyncMock(return_value=True)
+        pm.stop_server = AsyncMock(return_value=True)
+        pm.start_server = AsyncMock(return_value=True)
+        pm.is_server_running.return_value = True
+        manager = ServerLifecycleManager(
+            palworld_config, mock_logger, process_manager=pm
+        )
+        manager._state = ServerState.PAUSED
+
+        with patch(
+            "src.managers.lifecycle_manager.verify_server_startup",
+            new=AsyncMock(return_value=True),
+        ), patch("asyncio.sleep", new=AsyncMock()):
+            assert await manager.restart() is True
+
+        pm.resume_server.assert_awaited_once()
+        pm.stop_server.assert_awaited_once()
+        assert manager.state == ServerState.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_lock_serializes_restart_and_pause(
+        self, palworld_config, mock_logger
+    ):
+        stop_entered = asyncio.Event()
+        allow_stop = asyncio.Event()
+
+        async def slow_stop(*args):
+            stop_entered.set()
+            await allow_stop.wait()
+            return True
+
+        pm = MagicMock()
+        pm.update_runtime_state = MagicMock()
+        pm.stop_server = AsyncMock(side_effect=slow_stop)
+        pm.start_server = AsyncMock(return_value=True)
+        pm.pause_server = AsyncMock(return_value=True)
+        pm.is_server_running.return_value = True
+        manager = ServerLifecycleManager(
+            palworld_config, mock_logger, process_manager=pm
+        )
+        manager._state = ServerState.RUNNING
+        real_sleep = asyncio.sleep
+
+        with patch(
+            "src.managers.lifecycle_manager.verify_server_startup",
+            new=AsyncMock(return_value=True),
+        ), patch("asyncio.sleep", new=AsyncMock()):
+            restart_task = asyncio.create_task(manager.restart())
+            await stop_entered.wait()
+            pause_task = asyncio.create_task(manager.pause())
+            await real_sleep(0)
+            pm.pause_server.assert_not_awaited()
+            allow_stop.set()
+            assert await restart_task is True
+            assert await pause_task is True
+
+        pm.pause_server.assert_awaited_once()
+        assert manager.state == ServerState.PAUSED
 
     @pytest.mark.asyncio
     async def test_running_and_stable(self):

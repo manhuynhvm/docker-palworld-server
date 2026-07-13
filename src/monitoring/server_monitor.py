@@ -199,9 +199,14 @@ class ServerMonitor:
         
         player_count = 0
         try:
-            players_response = await self.api_manager.api_get_players()
-            if players_response and 'players' in players_response:
-                player_count = len(players_response['players'])
+            get_players = getattr(self.api_manager, 'get_players', None)
+            if get_players is None:
+                get_players = self.api_manager.api_get_players
+            players_response = await get_players()
+            if isinstance(players_response, dict):
+                player_count = len(players_response.get('players', []))
+            elif isinstance(players_response, list):
+                player_count = len(players_response)
         except Exception as e:
             self.logger.debug(f"Could not get player count: {e}")
         

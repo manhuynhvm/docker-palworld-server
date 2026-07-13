@@ -540,6 +540,25 @@ async def main():
     """Main health check function"""
     format_json = "--json" in sys.argv
     verbose = "--verbose" in sys.argv
+
+    runtime_state = os.getenv(
+        "PALWORLD_RUNTIME_STATE", "/run/palworld/server-state.json"
+    )
+    try:
+        with open(runtime_state, encoding="utf-8") as state_file:
+            state = json.load(state_file)
+    except (OSError, json.JSONDecodeError):
+        state = {}
+    if state.get("state") == "paused":
+        if format_json:
+            print(json.dumps({
+                "timestamp": time.time(),
+                "overall_status": "healthy",
+                "state": "paused",
+            }))
+        else:
+            print("Overall Status: HEALTHY\n\nserver: intentionally paused")
+        return 0
     
     checker = HealthChecker()
     

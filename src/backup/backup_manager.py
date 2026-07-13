@@ -5,11 +5,13 @@ Automatic backup scheduling and cleanup system
 """
 
 import asyncio
+import inspect
+import os
 import tarfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Awaitable, Callable, Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from ..config_loader import get_config, PalworldConfig
@@ -35,7 +37,8 @@ class EnhancedBackupManager:
         self.logger = get_logger("palworld.backup")
         
         self.backup_dir = self.config.paths.backup_dir
-        self.source_dir = self.config.paths.server_dir / "Pal" / "Saved"
+        self.source_dir = self.config.paths.server_dir / "Pal" / "Saved" / "SaveGames"
+        self.config_dir = self.config.paths.server_dir / "Pal" / "Saved" / "Config"
         
         self.enabled = self.config.backup.enabled
         self.interval_seconds = self.config.backup.interval_seconds
@@ -50,7 +53,36 @@ class EnhancedBackupManager:
         
         self._backup_task: Optional[asyncio.Task] = None
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._active_backup_task: Optional[asyncio.Task] = None
         self._running = False
+        self._backup_lock = asyncio.Lock()
+        self._completion_callbacks: List[Callable[[Dict[str, Any]], Any]] = []
+        self._save_world: Optional[Callable[[], Awaitable[bool]]] = None
+        self._is_server_running: Optional[Callable[[], bool]] = None
+
+    def configure_runtime(
+        self,
+        save_world: Callable[[], Awaitable[bool]],
+        is_server_running: Callable[[], bool],
+    ) -> None:
+        """Provide live-server hooks without coupling backups to the API facade."""
+        self._save_world = save_world
+        self._is_server_running = is_server_running
+
+    def add_completion_callback(
+        self, callback: Callable[[Dict[str, Any]], Any]
+    ) -> None:
+        if callback not in self._completion_callbacks:
+            self._completion_callbacks.append(callback)
+
+    async def _notify_completion(self, result: Dict[str, Any]) -> None:
+        for callback in list(self._completion_callbacks):
+            try:
+                callback_result = callback(result)
+                if inspect.isawaitable(callback_result):
+                    await callback_result
+            except Exception as exc:
+                self.logger.error(f"Backup completion callback failed: {exc}")
     
     async def start_backup_scheduler(self):
         """Start automatic backup scheduler"""
@@ -82,6 +114,9 @@ class EnhancedBackupManager:
                 await self._backup_task
             except asyncio.CancelledError:
                 pass
+
+        if self._active_backup_task and not self._active_backup_task.done():
+            await asyncio.shield(self._active_backup_task)
         
         if self._cleanup_task:
             self._cleanup_task.cancel()
@@ -103,7 +138,11 @@ class EnhancedBackupManager:
                 
                 self.logger.debug(f"Creating {backup_type} backup at {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
                 
-                result = await self.create_backup(f"{backup_type}_auto", backup_type)
+                self._active_backup_task = asyncio.create_task(
+                    self.create_backup(f"{backup_type}_auto", backup_type)
+                )
+                result = await asyncio.shield(self._active_backup_task)
+                self._active_backup_task = None
                 
                 if result.get('success'):
                     log_backup_event(
@@ -161,9 +200,24 @@ class EnhancedBackupManager:
         
         return 'daily'
     
-    async def create_backup(self, name: str = None, backup_type: str = 'manual') -> Dict[str, Any]:
+    async def create_backup(
+        self,
+        name: str = None,
+        backup_type: str = 'manual',
+        force: bool = False,
+    ) -> Dict[str, Any]:
         """Create a backup with specified name and type"""
+        async with self._backup_lock:
+            return await self._create_backup_locked(name, backup_type, force)
+
+    async def _create_backup_locked(
+        self,
+        name: Optional[str],
+        backup_type: str,
+        force: bool,
+    ) -> Dict[str, Any]:
         start_time = time.time()
+        partial_path: Optional[Path] = None
         
         try:
             if not self.source_dir.exists():
@@ -171,6 +225,17 @@ class EnhancedBackupManager:
                     'success': False,
                     'error': f'Source directory does not exist: {self.source_dir}'
                 }
+
+            server_running = bool(
+                self._is_server_running and self._is_server_running()
+            )
+            if server_running and not force:
+                if self._save_world is None or not await self._save_world():
+                    return {
+                        'success': False,
+                        'error': 'Save-world failed; backup aborted',
+                    }
+                await asyncio.sleep(2)
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             if name:
@@ -180,14 +245,17 @@ class EnhancedBackupManager:
             
             backup_filename = f"{backup_name}.tar.gz" if self.compress else f"{backup_name}.tar"
             backup_path = self.backup_dir / backup_filename
+            partial_path = backup_path.with_name(backup_path.name + ".partial")
             
-            await self._create_archive(backup_path, backup_type)
+            await self._create_archive(partial_path, backup_type)
+            await asyncio.to_thread(self._verify_archive, partial_path)
+            os.replace(partial_path, backup_path)
             
             duration_seconds = time.time() - start_time
             size_bytes = backup_path.stat().st_size
             size_mb = size_bytes / (1024 * 1024)
             
-            return {
+            result = {
                 'success': True,
                 'filename': backup_filename,
                 'filepath': str(backup_path),
@@ -196,6 +264,8 @@ class EnhancedBackupManager:
                 'duration_seconds': round(duration_seconds, 2),
                 'backup_type': backup_type
             }
+            await self._notify_completion(result)
+            return result
             
         except Exception as e:
             duration_seconds = time.time() - start_time
@@ -205,6 +275,12 @@ class EnhancedBackupManager:
                 'error': str(e),
                 'duration_seconds': round(duration_seconds, 2)
             }
+        finally:
+            if partial_path is not None:
+                try:
+                    partial_path.unlink()
+                except FileNotFoundError:
+                    pass
     
     async def _create_archive(self, backup_path: Path, backup_type: str):
         """Create backup archive"""
@@ -216,12 +292,25 @@ class EnhancedBackupManager:
                 if self.source_dir.exists():
                     tar.add(self.source_dir, arcname='SaveGames')
                 
-                config_dir = self.config.paths.server_dir / "Pal" / "Saved" / "Config"
-                if config_dir.exists():
-                    tar.add(config_dir, arcname='Config')
+                if self.config_dir.exists():
+                    tar.add(self.config_dir, arcname='Config')
         
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, create_tar)
+        archive_task = asyncio.create_task(asyncio.to_thread(create_tar))
+        try:
+            await asyncio.shield(archive_task)
+        except asyncio.CancelledError:
+            # A worker thread cannot be cancelled. Wait for it before allowing
+            # create_backup's cleanup to touch the partial file.
+            await archive_task
+            raise
+
+    @staticmethod
+    def _verify_archive(backup_path: Path) -> None:
+        """Fully read the archive index before publishing it."""
+        with tarfile.open(backup_path, 'r:*') as archive:
+            members = archive.getmembers()
+            if not members:
+                raise tarfile.TarError("Backup archive is empty")
     
     def list_backups(self) -> List[BackupInfo]:
         """List all backup files with metadata"""

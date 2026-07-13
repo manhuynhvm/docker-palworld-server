@@ -137,13 +137,24 @@ FEX_ENABLE_STATIC_REGISTER_ALLOCATION=1
 # Automatically restart server when empty
 IDLE_RESTART_ENABLED=true
 IDLE_RESTART_MINUTES=30
-IDLE_RESTART_MODE=restart  # Use "pause" for SIGSTOP/SIGCONT mode
+IDLE_RESTART_MODE=restart  # Use "pause" for manual-resume SIGSTOP mode
+
+# Resume a server paused by idle management
+docker exec palworld-server palworld-control resume
+
+# Inspect the managed process and lifecycle state
+docker exec palworld-server palworld-control status
 
 # Discord notification in your language
 🇺🇸 "No players for 30 minutes. Restarting server (My Server)."
 🇰🇷 "30분 동안 접속자가 없어 서버(My Server)를 재시작합니다."
 🇯🇵 "30分間プレイヤーがいなかったため、サーバー(My Server)を再起動します。"
 ```
+
+Pause mode intentionally requires an operator resume command. While Palworld is
+stopped with `SIGSTOP`, its REST API and game socket cannot detect a joining
+player. Configuration-file changes are validated and applied through a graceful
+container restart; environment-variable changes require recreating the container.
 
 ### **💾 Enterprise Backup System**
 

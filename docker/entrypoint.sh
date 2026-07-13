@@ -70,6 +70,7 @@ setup_permissions() {
     fi
 
     local directories=(
+        "/run/palworld"
         "/home/steam/palworld_server"
         "/home/steam/backups"
         "/home/steam/logs"

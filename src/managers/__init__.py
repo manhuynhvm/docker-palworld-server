@@ -5,5 +5,11 @@ Specialized managers for different server management aspects
 
 from .process_manager import ProcessManager
 from .config_manager import ConfigManager
+from .lifecycle_manager import ServerLifecycleManager, ServerState
 
-__all__ = ['ProcessManager', 'ConfigManager']
+__all__ = [
+    'ProcessManager',
+    'ConfigManager',
+    'ServerLifecycleManager',
+    'ServerState',
+]
