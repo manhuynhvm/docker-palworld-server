@@ -25,6 +25,7 @@ services:
             IDLE_RESTART_MINUTES: ${IDLE_RESTART_MINUTES:-30}
             IDLE_RESTART_MODE: ${IDLE_RESTART_MODE:-restart}
             IDLE_PAUSE_INTERFACE: ${IDLE_PAUSE_INTERFACE:-eth0}
+            TARGET_MANIFEST_ID: "${TARGET_MANIFEST_ID:-}"
         ports:
             - "8211:8211/udp" # Game server port
             - "27015:27015/udp" # Steam query port

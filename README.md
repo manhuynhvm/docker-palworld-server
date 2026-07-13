@@ -100,6 +100,12 @@ docker exec palworld-server palworld-control resume
 | `BACKUP_ENABLED`      | `true`              | 💾 Enable automatic backups          |
 | `DISCORD_WEBHOOK_URL` | `""`                | 💬 Discord webhook for notifications |
 | `LANGUAGE`            | `ko`                | 🌍 Language (`ko`/`en`/`ja`)         |
+| `TARGET_MANIFEST_ID`  | `""`                | 📌 Pin Linux server depot version     |
+
+When `TARGET_MANIFEST_ID` is set, startup downloads that exact manifest from
+Palworld's Linux server depot (`2394012`) instead of updating to the latest
+release. Find manifest IDs on [SteamDB](https://steamdb.info/depot/2394012/manifests/)
+or with SteamCMD. Remove the variable (or leave it empty) to resume normal updates.
 
 ### **⏰ NEW: Idle Restart Feature**
 

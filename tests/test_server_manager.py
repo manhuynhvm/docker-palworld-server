@@ -221,6 +221,48 @@ class TestPalworldServerManager:
         result = await manager.download_server_files()
         assert result is True
 
+        manager.steamcmd_manager.run_command.assert_called_once_with([
+            "+force_install_dir", str(manager.config.paths.server_dir),
+            "+login", "anonymous",
+            "+app_update", "2394010", "validate", "+quit",
+        ], timeout=1800)
+
+    @pytest.mark.asyncio
+    async def test_download_server_files_at_target_manifest(self, manager, tmp_path):
+        """A target manifest downloads and installs the Linux depot."""
+        manager.config.paths.steamcmd_dir = tmp_path / "steamcmd"
+        manager.config.paths.server_dir = tmp_path / "server"
+        manager.config.steamcmd.target_manifest_id = 5125159522749666228
+        depot_dir = (
+            manager.config.paths.steamcmd_dir
+            / "steamapps/content/app_2394010/depot_2394012"
+        )
+        depot_dir.mkdir(parents=True)
+        (depot_dir / "PalServer.sh").write_text("pinned", encoding="utf-8")
+
+        result = await manager.download_server_files()
+
+        assert result is True
+        manager.steamcmd_manager.run_command.assert_called_once_with([
+            "+login", "anonymous",
+            "+download_depot", "2394010", "2394012", "5125159522749666228",
+            "+quit",
+        ], timeout=1800)
+        assert (manager.config.paths.server_dir / "PalServer.sh").read_text() == "pinned"
+
+    @pytest.mark.asyncio
+    async def test_target_manifest_fails_when_depot_is_missing(self, manager, tmp_path):
+        manager.config.paths.steamcmd_dir = tmp_path / "steamcmd"
+        manager.config.paths.server_dir = tmp_path / "server"
+        manager.config.steamcmd.target_manifest_id = 5125159522749666228
+
+        result = await manager.download_server_files()
+
+        assert result is False
+        manager.monitoring_manager.handle_error.assert_awaited_once_with(
+            "Server file download failed"
+        )
+
 
 class TestWaitForApiReady:
     """FS-13.1.5: API readiness check."""

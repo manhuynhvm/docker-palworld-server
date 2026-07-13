@@ -5,6 +5,7 @@ Waits for REST API to be ready before starting monitoring systems
 """
 
 import asyncio
+import shutil
 import signal
 import time
 import aiohttp
@@ -319,16 +320,59 @@ class PalworldServerManager:
         log_server_event(self.logger, "server_download_start", 
                         "Starting Palworld server file download")
         
-        commands = [
-            "+force_install_dir", str(self.config.paths.server_dir),
-            "+login", "anonymous",
-            "+app_update", str(self.config.steamcmd.app_id)
-        ]
-        
-        if self.config.steamcmd.validate:
-            commands.append("validate")
+        manifest_id = self.config.steamcmd.target_manifest_id
+        if manifest_id is not None:
+            commands = [
+                "+login", "anonymous",
+                "+download_depot", str(self.config.steamcmd.app_id),
+                str(self.config.steamcmd.depot_id), str(manifest_id),
+            ]
+        else:
+            commands = [
+                "+force_install_dir", str(self.config.paths.server_dir),
+                "+login", "anonymous",
+                "+app_update", str(self.config.steamcmd.app_id),
+            ]
+
+            if self.config.steamcmd.validate:
+                commands.append("validate")
         commands.append("+quit")
         success = self.steamcmd_manager.run_command(commands, timeout=1800)
+
+        if success and manifest_id is not None:
+            depot_dir = (
+                self.config.paths.steamcmd_dir
+                / "steamapps" / "content"
+                / f"app_{self.config.steamcmd.app_id}"
+                / f"depot_{self.config.steamcmd.depot_id}"
+            )
+            if not depot_dir.is_dir():
+                self.logger.error(
+                    "SteamCMD completed but the downloaded manifest was not found",
+                    manifest_id=manifest_id,
+                    depot_dir=str(depot_dir),
+                )
+                success = False
+            else:
+                try:
+                    self.config.paths.server_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(
+                        depot_dir,
+                        self.config.paths.server_dir,
+                        dirs_exist_ok=True,
+                    )
+                    self.logger.info(
+                        "Installed pinned Palworld server manifest",
+                        manifest_id=manifest_id,
+                        depot_id=self.config.steamcmd.depot_id,
+                    )
+                except OSError as exc:
+                    self.logger.error(
+                        "Failed to install downloaded manifest",
+                        manifest_id=manifest_id,
+                        error=str(exc),
+                    )
+                    success = False
         
         if success:
             log_server_event(self.logger, "server_download_complete", 

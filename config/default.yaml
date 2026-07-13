@@ -230,6 +230,8 @@ paths:
 
 steamcmd:
     app_id: 2394010
+    depot_id: 2394012
+    target_manifest_id: "${TARGET_MANIFEST_ID:}"
     validate: ${STEAMCMD_VALIDATE:true}
     auto_update: ${AUTO_UPDATE:true}
     update_on_start: ${UPDATE_ON_START:true}

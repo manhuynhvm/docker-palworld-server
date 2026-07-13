@@ -245,6 +245,10 @@ class ConfigLoader(IConfigProvider):
         
         steamcmd_config = SteamCMDConfig(
             app_id=config_dict.get('steamcmd', {}).get('app_id', 2394010),
+            depot_id=config_dict.get('steamcmd', {}).get('depot_id', 2394012),
+            target_manifest_id=(
+                config_dict.get('steamcmd', {}).get('target_manifest_id') or None
+            ),
             validate=config_dict.get('steamcmd', {}).get('validate', True),
             auto_update=config_dict.get('steamcmd', {}).get('auto_update', True),
             update_on_start=config_dict.get('steamcmd', {}).get('update_on_start', True),
@@ -546,6 +550,12 @@ class ConfigLoader(IConfigProvider):
         
         if config.server_startup.worker_threads_count < 0:
             raise ValueError(f"Invalid worker threads count: {config.server_startup.worker_threads_count}")
+
+        manifest_id = config.steamcmd.target_manifest_id
+        if manifest_id is not None and (
+            not isinstance(manifest_id, int) or isinstance(manifest_id, bool) or manifest_id <= 0
+        ):
+            raise ValueError(f"Invalid target manifest ID: {manifest_id}")
         
         valid_languages = ['ko', 'en', 'ja', 'zh']
         if config.language not in valid_languages:

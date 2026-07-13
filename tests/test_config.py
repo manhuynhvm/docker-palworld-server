@@ -54,6 +54,29 @@ language: ko
             assert config.server.name == "EnvName"
             assert config.monitoring.idle_restart.mode == "pause"
 
+    def test_target_manifest_id_from_environment(self, tmp_path):
+        config_file = tmp_path / "manifest.yaml"
+        config_file.write_text("""steamcmd:
+  target_manifest_id: "${TARGET_MANIFEST_ID:}"
+language: ko
+""", encoding="utf-8")
+
+        with patch.dict(os.environ, {"TARGET_MANIFEST_ID": "5125159522749666228"}):
+            config = ConfigLoader(config_file).load_config()
+
+        assert config.steamcmd.target_manifest_id == 5125159522749666228
+
+    def test_target_manifest_id_defaults_to_none(self, tmp_path):
+        config_file = tmp_path / "manifest.yaml"
+        config_file.write_text("""steamcmd:
+  target_manifest_id: "${TARGET_MANIFEST_ID:}"
+language: ko
+""", encoding="utf-8")
+
+        config = ConfigLoader(config_file).load_config()
+
+        assert config.steamcmd.target_manifest_id is None
+
     def test_type_conversion_bool(self, tmp_path):
         """FS-1.1.3: String-to-bool conversion for true/false/yes/no/1/0/on/off."""
         config_file = tmp_path / "type_test.yaml"
