@@ -1,9 +1,12 @@
 # syntax=docker/dockerfile:1
 
+# ARM64/FEX SteamCMD base maintained in the same Docker Hub namespace.
+ARG STEAMCMD_BASE_IMAGE=peozozo123/steamcmd:latest
+
 # ============================================================
 # Stage 1: Builder — compile/build dependencies only
 # ============================================================
-FROM supersunho/steamcmd-arm64:latest AS builder
+FROM ${STEAMCMD_BASE_IMAGE} AS builder
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
@@ -47,13 +50,15 @@ RUN DOWNLOAD_URL=$(curl -s https://api.github.com/repos/itzg/rcon-cli/releases/l
 # ============================================================
 # Stage 2: Runtime — minimal production image
 # ============================================================
-FROM peozozo123/steamcmd-arm64:latest
+FROM ${STEAMCMD_BASE_IMAGE}
+
+ARG STEAMCMD_BASE_IMAGE
 
 LABEL maintainer="peozozo123" \
       version="1.1.3" \
       description="Palworld Dedicated Server with FEX emulation for ARM64" \
       architecture="arm64" \
-      base-image="peozozo123/steamcmd-arm64:latest"
+      base-image="${STEAMCMD_BASE_IMAGE}"
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
