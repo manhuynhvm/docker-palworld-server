@@ -72,6 +72,20 @@ volumes:
     palworld-logs:
 ```
 
+### **Idle Pause with RCON Disabled**
+
+Use [docker-compose.idle-pause.example.yml](./docker-compose.idle-pause.example.yml)
+for a simple example that disables RCON, keeps REST localhost-only, and
+pauses the game process after 30 idle minutes:
+
+```bash
+# Change SERVER_PASSWORD and ADMIN_PASSWORD before starting it.
+docker compose -f docker-compose.idle-pause.example.yml up -d
+
+# A paused server requires an operator to resume it.
+docker exec palworld-server palworld-control resume
+```
+
 ## ⚙️ Configuration
 
 ### **🔧 Essential Environment Variables**

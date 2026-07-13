@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+    palworld-server:
+        image: peozozo123/palworld-server:latest
+        container_name: palworld-server
+        restart: unless-stopped
+        ports:
+            - "8211:8211/udp" # Game Server
+            - "127.0.0.1:8212:8212/tcp" # REST API (localhost only)
+        environment:
+            - SERVER_NAME=🎮 My Palworld Server
+            - SERVER_PASSWORD=your-server-password
+            - MAX_PLAYERS=32
+            - ADMIN_PASSWORD=your-secure-password
+            - USE_AUTH=false
+            - RCON_ENABLED=false
+            - REST_API_ENABLED=true
+            - IDLE_RESTART_ENABLED=true
+            - IDLE_RESTART_MINUTES=30
+            - IDLE_RESTART_MODE=pause
+        volumes:
+            - palworld-data:/home/steam/palworld_server
+            - palworld-backups:/home/steam/backups
+            - palworld-logs:/home/steam/logs
+
+volumes:
+    palworld-data:
+    palworld-backups:
+    palworld-logs:
