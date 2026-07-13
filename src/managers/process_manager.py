@@ -47,6 +47,7 @@ class ProcessManager(IProcessManager):
         )
         self.runtime_state_file = self.runtime_dir / "server-state.json"
         self.resume_marker_file = self.runtime_dir / "manual-resume"
+        self.connection_wake_marker_file = self.runtime_dir / "client-wake"
 
     @staticmethod
     def _read_process_start_ticks(pid: int) -> Optional[int]:
@@ -95,9 +96,24 @@ class ProcessManager(IProcessManager):
             self.logger.warning(f"Unable to consume manual resume marker: {exc}")
             return False
 
+    def consume_connection_wake_marker(self) -> bool:
+        """Consume a marker written by the external UDP packet detector."""
+        try:
+            self.connection_wake_marker_file.unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            self.logger.warning(f"Unable to consume connection wake marker: {exc}")
+            return False
+
     def _clear_runtime_state(self) -> None:
         self._runtime_state = "stopped"
-        for path in (self.runtime_state_file, self.resume_marker_file):
+        for path in (
+            self.runtime_state_file,
+            self.resume_marker_file,
+            self.connection_wake_marker_file,
+        ):
             try:
                 path.unlink()
             except FileNotFoundError:

@@ -41,6 +41,7 @@ monitoring:
     enabled: true
     minutes: 30
     mode: "restart"
+    interface: "eth0"
 
 # Backup configuration
 backup:

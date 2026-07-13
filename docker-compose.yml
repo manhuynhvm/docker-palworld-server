@@ -7,6 +7,8 @@ services:
         hostname: palworld-server
         restart: unless-stopped
         stop_grace_period: 150s
+        cap_add:
+            - NET_RAW
         environment:
             # Required — must be set via .env or shell environment
             ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Admin password is required in .env or environment}
@@ -22,6 +24,7 @@ services:
             IDLE_RESTART_ENABLED: ${IDLE_RESTART_ENABLED:-true}
             IDLE_RESTART_MINUTES: ${IDLE_RESTART_MINUTES:-30}
             IDLE_RESTART_MODE: ${IDLE_RESTART_MODE:-restart}
+            IDLE_PAUSE_INTERFACE: ${IDLE_PAUSE_INTERFACE:-eth0}
         ports:
             - "8211:8211/udp" # Game server port
             - "27015:27015/udp" # Steam query port

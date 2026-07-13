@@ -72,15 +72,27 @@ def resume(runtime_dir: Path) -> int:
     return 0
 
 
+def mark_connection_wake(runtime_dir: Path) -> int:
+    """Record traffic detected by knockd for the async manager to consume."""
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    marker = runtime_dir / "client-wake"
+    temporary = marker.with_name(f".{marker.name}.{os.getpid()}.tmp")
+    temporary.write_text(str(time.time()), encoding="utf-8")
+    os.replace(temporary, marker)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="palworld-control")
-    parser.add_argument("command", choices=("status", "resume"))
+    parser.add_argument("command", choices=("status", "resume", "wake"))
     args = parser.parse_args()
     runtime_dir = Path(os.getenv("PALWORLD_RUNTIME_DIR", "/run/palworld"))
 
     try:
         if args.command == "status":
             return show_status(runtime_dir)
+        if args.command == "wake":
+            return mark_connection_wake(runtime_dir)
         return resume(runtime_dir)
     except RuntimeError as exc:
         print(f"palworld-control: {exc}", file=sys.stderr)

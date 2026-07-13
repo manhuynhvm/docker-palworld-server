@@ -35,6 +35,9 @@ class IProcessManager(Protocol):
 
     def consume_manual_resume_marker(self) -> bool:
         ...
+
+    def consume_connection_wake_marker(self) -> bool:
+        ...
     
     def get_server_status(self) -> Dict[str, Any]:
         """Get detailed server process status"""

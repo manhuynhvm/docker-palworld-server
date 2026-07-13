@@ -76,13 +76,14 @@ volumes:
 
 Use [docker-compose.idle-pause.example.yml](./docker-compose.idle-pause.example.yml)
 for a simple example that disables RCON, keeps REST localhost-only, and
-pauses the game process after 30 idle minutes:
+pauses the game process after 30 idle minutes. The world is saved first, and
+the process automatically resumes when traffic reaches the game UDP port:
 
 ```bash
 # Change SERVER_PASSWORD and ADMIN_PASSWORD before starting it.
 docker compose -f docker-compose.idle-pause.example.yml up -d
 
-# A paused server requires an operator to resume it.
+# Manual resume remains available if needed.
 docker exec palworld-server palworld-control resume
 ```
 
@@ -107,6 +108,7 @@ docker exec palworld-server palworld-control resume
 | `IDLE_RESTART_ENABLED`       | `true`  | 🔄 Enable auto-restart when no players    |
 | `IDLE_RESTART_MINUTES`       | `30`    | ⏱️ Minutes to wait before restart         |
 | `IDLE_RESTART_MODE`          | `restart` | Idle action: `restart` or `pause`       |
+| `IDLE_PAUSE_INTERFACE`       | `eth0`  | Interface used to detect game UDP traffic |
 | `DISCORD_EVENT_IDLE_RESTART` | `true`  | 📣 Discord notification for idle restarts |
 
 ### **🎮 Game Settings (150+ configurable options)**
@@ -151,9 +153,9 @@ FEX_ENABLE_STATIC_REGISTER_ALLOCATION=1
 # Automatically restart server when empty
 IDLE_RESTART_ENABLED=true
 IDLE_RESTART_MINUTES=30
-IDLE_RESTART_MODE=restart  # Use "pause" for manual-resume SIGSTOP mode
+IDLE_RESTART_MODE=restart  # Use "pause" for save, SIGSTOP, and connection wake
 
-# Resume a server paused by idle management
+# Optional manual resume; normal game connection attempts resume automatically
 docker exec palworld-server palworld-control resume
 
 # Inspect the managed process and lifecycle state
@@ -165,10 +167,13 @@ docker exec palworld-server palworld-control status
 🇯🇵 "30分間プレイヤーがいなかったため、サーバー(My Server)を再起動します。"
 ```
 
-Pause mode intentionally requires an operator resume command. While Palworld is
-stopped with `SIGSTOP`, its REST API and game socket cannot detect a joining
-player. Configuration-file changes are validated and applied through a graceful
-container restart; environment-variable changes require recreating the container.
+Pause mode saves the world, starts a separate `knockd` listener, and then freezes
+Palworld with `SIGSTOP`. An inbound packet on the external game UDP port writes a
+wake marker and the lifecycle manager sends `SIGCONT`; REST polling remains off
+while frozen. The container needs `NET_RAW`, which is included in the supplied
+Compose and Helm configuration. Configuration-file changes are validated and
+applied through a graceful container restart; environment-variable changes
+require recreating the container.
 
 ### **💾 Enterprise Backup System**
 

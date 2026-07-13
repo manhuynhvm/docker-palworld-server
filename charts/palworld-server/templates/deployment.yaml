@@ -30,6 +30,12 @@ spec:
         - name: palworld-server
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{ if eq .Values.monitoring.idleRestart.mode "pause" }}
+          securityContext:
+            capabilities:
+              add:
+                - NET_RAW
+          {{ end }}
           ports:
             - containerPort: {{ .Values.server.port }}
               protocol: UDP
@@ -77,6 +83,8 @@ spec:
               value: {{ .Values.monitoring.idleRestart.mode | quote }}
             - name: PALWORLD_RUNTIME_DIR
               value: /run/palworld
+            - name: IDLE_PAUSE_INTERFACE
+              value: {{ .Values.monitoring.idleRestart.interface | default "eth0" | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.monitoring.logLevel }}
             - name: BACKUP_ENABLED

@@ -5,6 +5,8 @@ services:
         image: peozozo123/palworld-server:latest
         container_name: palworld-server
         restart: unless-stopped
+        cap_add:
+            - NET_RAW
         ports:
             - "8211:8211/udp" # Game Server
             - "127.0.0.1:8212:8212/tcp" # REST API (localhost only)

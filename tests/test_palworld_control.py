@@ -41,3 +41,8 @@ def test_resume_rejects_running_server(tmp_path):
     with patch.object(palworld_control, "read_start_ticks", return_value=42):
         with pytest.raises(RuntimeError, match="not paused"):
             palworld_control.resume(tmp_path)
+
+
+def test_wake_command_writes_connection_marker(tmp_path):
+    assert palworld_control.mark_connection_wake(tmp_path) == 0
+    assert (tmp_path / "client-wake").exists()

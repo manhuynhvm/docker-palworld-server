@@ -19,7 +19,17 @@ class TestIdleRestartManager:
         pm = MagicMock()
         pm.is_server_running.return_value = True
         pm.consume_manual_resume_marker.return_value = False
-        return IdleRestartManager(palworld_config, mock_player_monitor, pm)
+        pm.consume_connection_wake_marker.return_value = False
+        detector = MagicMock()
+        detector.start = AsyncMock(return_value=True)
+        detector.stop = AsyncMock()
+        detector.active = False
+        api = MagicMock()
+        api.save_world = AsyncMock(return_value=True)
+        return IdleRestartManager(
+            palworld_config, mock_player_monitor, pm, api,
+            wake_detector=detector,
+        )
 
     def test_init_default_mode(self, manager):
         """FS-18.1: Default mode is 'restart'."""
@@ -75,7 +85,8 @@ class TestIdleRestartManager:
         manager.mode = "pause"
         manager.process_manager.pause_server = AsyncMock(return_value=True)
         
-        success = await manager._perform_pause()
+        with patch("asyncio.sleep", new=AsyncMock()):
+            success = await manager._perform_pause()
         assert success is True
         assert manager._paused is True
         manager.process_manager.pause_server.assert_awaited_once()
@@ -86,7 +97,8 @@ class TestIdleRestartManager:
         manager.mode = "pause"
         manager.process_manager.pause_server = AsyncMock(return_value=False)
         
-        success = await manager._perform_pause()
+        with patch("asyncio.sleep", new=AsyncMock()):
+            success = await manager._perform_pause()
         assert success is False
         assert manager._paused is False
 
@@ -113,6 +125,66 @@ class TestIdleRestartManager:
 
         assert manager._paused is False
         assert manager.stats.total_resumes == 1
+
+    @pytest.mark.asyncio
+    async def test_client_connection_marker_resumes_server(self, manager):
+        manager._paused = True
+        manager._pause_start_time = time.time()
+        manager.process_manager.consume_connection_wake_marker.side_effect = [
+            True, False
+        ]
+        manager.process_manager.resume_server = AsyncMock(return_value=True)
+
+        with patch.object(manager, '_send_discord_notification', AsyncMock()):
+            await manager._check_paused_status()
+
+        manager.process_manager.resume_server.assert_awaited_once()
+        manager.wake_detector.stop.assert_awaited_once()
+        assert manager._paused is False
+        assert manager._last_resume_reason == "client connection"
+
+    @pytest.mark.asyncio
+    async def test_pause_saves_before_starting_detector(
+        self, palworld_config, mock_player_monitor
+    ):
+        pm = MagicMock()
+        pm.pause_server = AsyncMock(return_value=True)
+        api = MagicMock()
+        api.save_world = AsyncMock(return_value=True)
+        detector = MagicMock()
+        detector.start = AsyncMock(return_value=True)
+        detector.stop = AsyncMock()
+        detector.active = False
+        manager = IdleRestartManager(
+            palworld_config, mock_player_monitor, pm, api, detector
+        )
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            assert await manager._perform_pause() is True
+
+        api.save_world.assert_awaited_once()
+        detector.start.assert_awaited_once()
+        pm.pause_server.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_save_failure_prevents_pause(
+        self, palworld_config, mock_player_monitor
+    ):
+        pm = MagicMock()
+        pm.pause_server = AsyncMock(return_value=True)
+        api = MagicMock()
+        api.save_world = AsyncMock(return_value=False)
+        detector = MagicMock()
+        detector.start = AsyncMock(return_value=True)
+        detector.stop = AsyncMock()
+        detector.active = False
+        manager = IdleRestartManager(
+            palworld_config, mock_player_monitor, pm, api, detector
+        )
+
+        assert await manager._perform_pause() is False
+        detector.start.assert_not_awaited()
+        pm.pause_server.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_force_resume(self, manager):
@@ -188,7 +260,17 @@ class TestIdleRestartManagerEdgeCases:
         pm = MagicMock()
         pm.is_server_running.return_value = True
         pm.consume_manual_resume_marker.return_value = False
-        return IdleRestartManager(palworld_config, mock_player_monitor, pm)
+        pm.consume_connection_wake_marker.return_value = False
+        detector = MagicMock()
+        detector.start = AsyncMock(return_value=True)
+        detector.stop = AsyncMock()
+        detector.active = False
+        api = MagicMock()
+        api.save_world = AsyncMock(return_value=True)
+        return IdleRestartManager(
+            palworld_config, mock_player_monitor, pm, api,
+            wake_detector=detector,
+        )
 
     @pytest.fixture
     def manager_disabled(self, palworld_config, mock_player_monitor, mock_logger):

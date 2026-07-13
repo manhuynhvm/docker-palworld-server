@@ -76,6 +76,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     jq \
     gosu \
+    knockd \
+    libcap2-bin \
+    libpcap0.8 \
     && apt-get purge -y --auto-remove curl wget \
     && rm -rf /var/lib/apt/lists/*
 
@@ -102,6 +105,7 @@ ENV PYTHONUNBUFFERED=1 \
     IDLE_RESTART_ENABLED=true \
     IDLE_RESTART_MINUTES=30 \
     IDLE_RESTART_MODE=restart \
+    IDLE_PAUSE_INTERFACE=eth0 \
     PALWORLD_RUNTIME_DIR=/run/palworld \
     DISCORD_ENABLED=false \
     \
@@ -135,6 +139,9 @@ RUN chown -R steam:steam \
     chmod 755 /home/steam/palworld_server \
     /home/steam/backups \
     /home/steam/logs
+
+# knockd observes the game UDP port while PalServer is SIGSTOP-frozen.
+RUN setcap cap_net_raw=ep "$(command -v knockd)"
 
 EXPOSE ${SERVER_PORT}/udp \
        27015/udp \
