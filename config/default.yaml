@@ -197,6 +197,7 @@ monitoring:
     idle_restart:
         enabled: ${IDLE_RESTART_ENABLED:true}
         idle_minutes: ${IDLE_RESTART_MINUTES:30}
+        mode: "${IDLE_RESTART_MODE:restart}"
 
 backup:
     enabled: ${BACKUP_ENABLED:true}

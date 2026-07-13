@@ -68,6 +68,12 @@ spec:
               value: {{ .Values.managementService.rconPort | quote }}
             - name: MONITORING_MODE
               value: {{ .Values.monitoring.mode }}
+            - name: IDLE_RESTART_ENABLED
+              value: {{ .Values.monitoring.idleRestart.enabled | quote }}
+            - name: IDLE_RESTART_MINUTES
+              value: {{ .Values.monitoring.idleRestart.minutes | quote }}
+            - name: IDLE_RESTART_MODE
+              value: {{ .Values.monitoring.idleRestart.mode | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.monitoring.logLevel }}
             - name: BACKUP_ENABLED

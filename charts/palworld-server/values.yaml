@@ -37,6 +37,10 @@ monitoring:
   metricsPort: 9090
   dashboardPort: 8080
   logLevel: "INFO"
+  idleRestart:
+    enabled: true
+    minutes: 30
+    mode: "restart"
 
 # Backup configuration
 backup:

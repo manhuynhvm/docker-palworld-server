@@ -18,6 +18,9 @@ services:
             PGID: ${PGID:-1002}
             BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
             MONITORING_MODE: ${MONITORING_MODE:-both}
+            IDLE_RESTART_ENABLED: ${IDLE_RESTART_ENABLED:-true}
+            IDLE_RESTART_MINUTES: ${IDLE_RESTART_MINUTES:-30}
+            IDLE_RESTART_MODE: ${IDLE_RESTART_MODE:-restart}
         ports:
             - "8211:8211/udp" # Game server port
             - "27015:27015/udp" # Steam query port

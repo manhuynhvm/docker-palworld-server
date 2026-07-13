@@ -195,7 +195,8 @@ class ConfigLoader(IConfigProvider):
         
         idle_restart_config = IdleRestartConfig(
             enabled=enabled,
-            idle_minutes=idle_minutes
+            idle_minutes=idle_minutes,
+            mode=str(idle_restart_dict.get('mode', 'restart')).strip().lower()
         )
         
         monitoring_config = MonitoringConfig(
@@ -526,6 +527,12 @@ class ConfigLoader(IConfigProvider):
         valid_modes = ['logs', 'prometheus', 'both']
         if config.monitoring.mode not in valid_modes:
             raise ValueError(f"Invalid monitoring mode: {config.monitoring.mode}")
+
+        valid_idle_restart_modes = ['restart', 'pause']
+        if config.monitoring.idle_restart.mode not in valid_idle_restart_modes:
+            raise ValueError(
+                f"Invalid idle restart mode: {config.monitoring.idle_restart.mode}"
+            )
         
         if config.discord.enabled and not config.discord.webhook_url:
             raise ValueError("Discord notifications enabled but webhook URL not set")

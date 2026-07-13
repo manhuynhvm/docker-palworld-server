@@ -18,4 +18,4 @@ class IdleRestartConfig:
     """
     enabled: bool = True
     idle_minutes: int = 30
-    mode: str = "restart"  # "restart" | "pause"
+    mode: Literal["restart", "pause"] = "restart"

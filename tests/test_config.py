@@ -40,12 +40,19 @@ language: ko
         config_file = tmp_path / "env_override.yaml"
         config_file.write_text("""server:
   name: "${TEST_SERVER_NAME_OVERRIDE:Default}"
+monitoring:
+  idle_restart:
+    mode: "${TEST_IDLE_RESTART_MODE:restart}"
 language: ko
 """, encoding='utf-8')
-        with patch.dict(os.environ, {"TEST_SERVER_NAME_OVERRIDE": "EnvName"}):
+        with patch.dict(os.environ, {
+            "TEST_SERVER_NAME_OVERRIDE": "EnvName",
+            "TEST_IDLE_RESTART_MODE": "pause",
+        }):
             loader = ConfigLoader(config_file)
             config = loader.load_config()
             assert config.server.name == "EnvName"
+            assert config.monitoring.idle_restart.mode == "pause"
 
     def test_type_conversion_bool(self, tmp_path):
         """FS-1.1.3: String-to-bool conversion for true/false/yes/no/1/0/on/off."""
@@ -320,6 +327,14 @@ class TestConfigLoaderEdgeCases:
         config = config_loader.load_config()
         config.monitoring.mode = "unknown"
         with pytest.raises(ValueError, match="Invalid monitoring mode"):
+            config_loader.validate_config(config)
+
+    def test_validate_config_invalid_idle_restart_mode(self, config_loader):
+        """Only restart and pause are valid idle actions."""
+        config = config_loader.load_config()
+        config.monitoring.idle_restart.mode = "hibernate"
+
+        with pytest.raises(ValueError, match="Invalid idle restart mode"):
             config_loader.validate_config(config)
 
     def test_validate_config_discord_enabled_no_webhook(self, config_loader):

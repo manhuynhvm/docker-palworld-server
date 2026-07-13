@@ -92,6 +92,7 @@ volumes:
 | :--------------------------- | :------ | :---------------------------------------- |
 | `IDLE_RESTART_ENABLED`       | `true`  | 🔄 Enable auto-restart when no players    |
 | `IDLE_RESTART_MINUTES`       | `30`    | ⏱️ Minutes to wait before restart         |
+| `IDLE_RESTART_MODE`          | `restart` | Idle action: `restart` or `pause`       |
 | `DISCORD_EVENT_IDLE_RESTART` | `true`  | 📣 Discord notification for idle restarts |
 
 ### **🎮 Game Settings (150+ configurable options)**
@@ -136,6 +137,7 @@ FEX_ENABLE_STATIC_REGISTER_ALLOCATION=1
 # Automatically restart server when empty
 IDLE_RESTART_ENABLED=true
 IDLE_RESTART_MINUTES=30
+IDLE_RESTART_MODE=restart  # Use "pause" for SIGSTOP/SIGCONT mode
 
 # Discord notification in your language
 🇺🇸 "No players for 30 minutes. Restarting server (My Server)."
