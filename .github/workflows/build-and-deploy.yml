@@ -47,7 +47,7 @@ concurrency:
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
-    DOCKERHUB_REPO: supersunho/palworld-server
+    DOCKERHUB_REPO: peozozo123/palworld-server
     DOCKER_BUILDKIT: 1
     BUILDKIT_PROGRESS: plain
     CACHE_VERSION: v1

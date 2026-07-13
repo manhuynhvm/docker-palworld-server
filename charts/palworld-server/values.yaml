@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: supersunho/palworld-server
+  repository: peozozo123/palworld-server
   tag: latest
   pullPolicy: Always
 

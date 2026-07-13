@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
     palworld-server:
-        image: supersunho/palworld-server:latest
+        image: peozozo123/palworld-server:latest
         container_name: palworld-server
         hostname: palworld-server
         restart: unless-stopped

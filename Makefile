@@ -5,12 +5,12 @@
 ## Build production ARM64 image
 build:
 	docker buildx build --platform linux/arm64 --load \
-		-t supersunho/palworld-server:latest .
+		-t peozozo123/palworld-server:latest .
 
 ## Build with no cache (full rebuild)
 build-nocache:
 	docker buildx build --platform linux/arm64 --load --no-cache \
-		-t supersunho/palworld-server:latest .
+		-t peozozo123/palworld-server:latest .
 
 ## Quick build with target=builder (for dev testing)
 build-dev:

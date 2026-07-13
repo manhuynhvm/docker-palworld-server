@@ -38,7 +38,7 @@ docker run -d \
   -e ADMIN_PASSWORD=your-secure-password \
   -v palworld-data:/home/steam/palworld_server \
   -v palworld-backups:/home/steam/backups \
-  supersunho/palworld-server:latest
+  peozozo123/palworld-server:latest
 ```
 
 > ⚠️ **Security**: REST API (8212) and RCON (25575) bind to `127.0.0.1` by default.
@@ -50,7 +50,7 @@ docker run -d \
 version: "3.8"
 services:
     palworld-server:
-        image: supersunho/palworld-server:latest
+        image: peozozo123/palworld-server:latest
         container_name: palworld-server
         restart: unless-stopped
         ports:
@@ -192,6 +192,32 @@ docker exec palworld-server python /app/scripts/healthcheck.py
 # CPU > 90%, Memory > 95%, API timeouts = auto-restart
 ```
 
+## 🐳 Publishing to Docker Hub with GitHub Actions
+
+The workflow in `.github/workflows/build-and-deploy.yml` builds the ARM64 image and
+publishes `peozozo123/palworld-server:latest` plus versioned and `-arm64` tags.
+
+One-time setup:
+
+1. Create the `peozozo123/palworld-server` repository on Docker Hub.
+2. In Docker Hub, open **Account settings → Personal access tokens** and create a
+   token with read/write permission.
+3. In the GitHub repository, open **Settings → Secrets and variables → Actions**
+   and add these repository secrets:
+
+   - `DOCKERHUB_USERNAME`: `peozozo123`
+   - `DOCKERHUB_TOKEN`: the Docker Hub personal access token (do not use your password)
+
+4. Open **Actions → Palworld Server Builder → Run workflow**. Leave
+   `source_version` as `latest`, enable `force_rebuild` when replacing an existing
+   tag, and run the workflow.
+
+After the workflow succeeds, verify the published image:
+
+```bash
+docker pull peozozo123/palworld-server:latest
+```
+
 ## 🛠️ Advanced Usage
 
 ### **Multi-Arch Build Commands**
@@ -215,7 +241,7 @@ docker buildx build --platform linux/arm64 -t palworld-server .
 docker run -d \
   -v ./my-config.yaml:/app/config/default.yaml \
   -v palworld-data:/home/steam/palworld_server \
-  supersunho/docker-palworld-server:latest
+  peozozo123/palworld-server:latest
 ```
 
 ### **Development Mode**
@@ -225,7 +251,7 @@ docker run -d \
 docker run -it --rm \
   -v $(pwd):/app \
   -p 8211:8211/udp \
-  supersunho/palworld-server:latest bash
+  peozozo123/palworld-server:latest bash
 ```
 
 ## 🌍 Multi-Language Discord Notifications
@@ -274,7 +300,7 @@ Server Restart:
 
 ### **🔗 Links**
 
-- 📦 **Docker Hub**: [supersunho/palworld-server](https://hub.docker.com/r/supersunho/palworld-server)
+- 📦 **Docker Hub**: [peozozo123/palworld-server](https://hub.docker.com/r/peozozo123/palworld-server)
 - 📂 **GitHub**: [supersunho/docker-palworld-server](https://github.com/supersunho/docker-palworld-server)
 - 🐛 **Issues**: [Report Issues](https://github.com/supersunho/docker-palworld-server/issues)
 - 💬 **Discussions**: [Community Discussions](https://github.com/supersunho/docker-palworld-server/discussions)
