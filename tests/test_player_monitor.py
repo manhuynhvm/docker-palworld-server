@@ -66,11 +66,25 @@ class TestPlayerMonitor:
         assert sys_cb in monitor._event_callbacks[PlayerEventType.JOINED]
         assert user_cb not in monitor._event_callbacks[PlayerEventType.JOINED]
 
-    def test_get_current_players(self, monitor):
+    @pytest.mark.asyncio
+    async def test_get_current_players(self, monitor):
         """FS-15: Player tracking."""
         monitor._previous_players = {"P1", "P2"}
         assert monitor.get_current_players() == {"P1", "P2"}
-        assert monitor.get_current_player_count() == 2
+        monitor.api_manager.api_get_players.return_value = [
+            {"name": "P1"},
+            {"name": "P2"},
+            {"name": "P3"},
+        ]
+        assert await monitor.get_current_player_count() == 3
+
+    @pytest.mark.asyncio
+    async def test_get_current_player_count_returns_none_when_api_fails(self, monitor):
+        """An API failure must not be interpreted as zero online players."""
+        monitor._retry_count = 1
+        monitor.api_manager.api_get_players.return_value = None
+
+        assert await monitor.get_current_player_count() is None
 
     @pytest.mark.asyncio
     async def test_detect_player_join(self, monitor):

@@ -314,9 +314,18 @@ class PlayerMonitor:
             except Exception as e:
                 self.logger.error(f"Event callback {i+1} error for {event.event_type.value}: {e}", exc_info=True)
     
-    def get_current_player_count(self) -> int:
-        """Get current player count"""
-        return len(self._previous_players)
+    async def get_current_player_count(self) -> Optional[int]:
+        """Get the current player count from the Palworld REST API.
+
+        ``None`` means the API request failed.  Keeping that state distinct from
+        an empty player list prevents callers from treating an unavailable API
+        as confirmation that the server is idle.
+        """
+        current_players = await self._get_current_players()
+        if current_players is None:
+            return None
+
+        return len(current_players)
     
     def get_current_players(self) -> Set[str]:
         """Get current player names"""

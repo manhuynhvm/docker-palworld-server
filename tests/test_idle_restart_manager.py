@@ -300,6 +300,17 @@ class TestIdleRestartManagerEdgeCases:
             mock_ha.assert_awaited_once_with(3)
 
     @pytest.mark.asyncio
+    async def test_check_idle_status_skips_unknown_player_count(self, manager):
+        """A REST API failure must not be treated as an idle server."""
+        manager.process_manager.is_server_running.return_value = True
+        manager.player_monitor.get_current_player_count.return_value = None
+        with patch.object(manager, '_handle_zero_players', AsyncMock()) as mock_zero:
+            with patch.object(manager, '_handle_active_players', AsyncMock()) as mock_active:
+                await manager._check_idle_status()
+                mock_zero.assert_not_awaited()
+                mock_active.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_handle_paused_state_no_start_time(self, manager):
         """FS-18.x: _handle_paused_state sets pause_start_time when None."""
         manager._paused = True

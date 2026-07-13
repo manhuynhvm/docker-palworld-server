@@ -252,7 +252,7 @@ def mock_api_facade():
 def mock_player_monitor():
     """Mock PlayerMonitor."""
     monitor = MagicMock()
-    monitor.get_current_player_count = MagicMock(return_value=3)
+    monitor.get_current_player_count = AsyncMock(return_value=3)
     monitor.get_current_players = MagicMock(return_value={'Player1', 'Player2', 'Player3'})
     monitor.is_monitoring_active = MagicMock(return_value=True)
     monitor.add_event_callback = MagicMock()

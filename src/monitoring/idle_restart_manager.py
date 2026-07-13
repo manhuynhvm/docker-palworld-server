@@ -136,7 +136,13 @@ class IdleRestartManager:
                 self._idle_start = None
             return
         
-        current_player_count = self.player_monitor.get_current_player_count()
+        current_player_count = await self.player_monitor.get_current_player_count()
+        if current_player_count is None:
+            self.logger.warning(
+                "Unable to determine current player count; skipping idle check"
+            )
+            return
+
         current_time = time.time()
         
         if current_player_count == 0:

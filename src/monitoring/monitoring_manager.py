@@ -167,7 +167,9 @@ class MonitoringManager:
             "idle_restart_monitoring": self.idle_restart_manager.is_monitoring_active(),
             "discord_enabled": self.config.discord.enabled,
             "current_players": list(self.player_monitor.get_current_players()),
-            "player_count": self.player_monitor.get_current_player_count(),
+            # This status method is synchronous, so report the most recently
+            # observed player list rather than starting a REST request here.
+            "player_count": len(self.player_monitor.get_current_players()),
             "last_server_status": self.server_monitor.get_last_status(),
             "idle_restart_status": self.idle_restart_manager.get_idle_status(),
             "background_tasks": len(self._background_tasks)
